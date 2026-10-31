@@ -284,3 +284,7 @@ QFrame#axisRow QCheckBox::indicator {
 }
 
 QFrame#axisRow QCheckBox::indicator:checked { background-color: #0071e3; border-color: #0071e3; }
+
+/* ---- 點位表 ---- */
+
+QTableWidget { gridline-color: #c7c7cc; }

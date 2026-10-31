@@ -1,7 +1,7 @@
 """軸控頁（spec FR-28 ~ FR-33、FR-16 反灰、FR-27 UI 面）。
 
 上半部：七軸總覽（FR-28、FR-29）｜選定軸區塊（FR-30）＋全軸操作區（FR-31）。
-下半部 `bottom_layout`：步進鍵盤 `JogPad`（FR-32），右側留給點位表面板。
+下半部 `bottom_layout`：步進鍵盤 `JogPad`（FR-32）｜點位表面板 `PointsPanel`（FR-34 ~ FR-36）。
 
 命令一律呼叫 worker 的命令方法；畫面只依 `snapshot_ready` 更新。鎖定（`EngineStatus.locked`）或
 尚未取得狀態時所有寫入控制項反灰，唯一例外是按住中的 JOG 鍵：JOG 按下本身就會造成鎖定，
@@ -37,6 +37,7 @@ from plc_motion.ui.jog_pad import (
     lock_tooltip,
     segment_button,
 )
+from plc_motion.ui.points_panel import PointsPanel
 from plc_motion.ui.theme import set_state
 from plc_motion.worker import EngineStatus
 
@@ -209,6 +210,7 @@ class AxisPage(QWidget):
         selected = self._build_selected()
         all_axes = self._build_all_axes()
         self.jog_pad = JogPad(config, worker)
+        self.points_panel = PointsPanel(config, worker)
 
         right = QVBoxLayout()
         right.addWidget(selected)
@@ -220,7 +222,7 @@ class AxisPage(QWidget):
 
         self.bottom_layout = QHBoxLayout()
         self.bottom_layout.addWidget(self.jog_pad, 0, Qt.AlignmentFlag.AlignTop)
-        self.bottom_layout.addStretch(1)
+        self.bottom_layout.addWidget(self.points_panel, 1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
