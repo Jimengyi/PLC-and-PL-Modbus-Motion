@@ -13,11 +13,6 @@ from plc_motion.ui.tray import TrayState
 
 pytestmark = pytest.mark.e2e
 
-FREEZE_BUG = (
-    "產品 bug：鎖定狀態切換時 PointsPanel._set_editable 對 200 列逐格 setFlags，觸發 itemChanged"
-    " → _store 把 positions.csv 寫上千次，UI 執行緒凍結約 5 秒"
-)
-
 
 def free_port() -> int:
     with socket.socket() as s:
@@ -117,7 +112,6 @@ def test_ac6_start_without_sim_then_reconnect_manually(e2e, config):
 # ---- AC-7 ----
 
 
-@pytest.mark.xfail(strict=True, reason=FREEZE_BUG)
 def test_ac7_sim_stop_shows_disconnected_within_one_poll(e2e, config):
     app = e2e.start()
     e2e.wait_connected()

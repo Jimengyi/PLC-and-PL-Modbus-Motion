@@ -349,11 +349,15 @@ class PointsPanel(QGroupBox):
         if editable == self._editable:
             return
         self._editable = editable
-        for i in range(self.table.rowCount()):
-            for col in range(1, len(HEADER)):
-                item = self.table.item(i, col)
-                flags = item.flags()
-                if editable:
-                    item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
-                else:
-                    item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
+        self._loading = True  # setFlags 會發 itemChanged，不能被當成使用者編輯而存檔
+        try:
+            for i in range(self.table.rowCount()):
+                for col in range(1, len(HEADER)):
+                    item = self.table.item(i, col)
+                    flags = item.flags()
+                    if editable:
+                        item.setFlags(flags | Qt.ItemFlag.ItemIsEditable)
+                    else:
+                        item.setFlags(flags & ~Qt.ItemFlag.ItemIsEditable)
+        finally:
+            self._loading = False

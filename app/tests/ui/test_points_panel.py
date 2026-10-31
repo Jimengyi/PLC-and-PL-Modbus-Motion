@@ -211,6 +211,17 @@ def test_locked_disables_save_edit_import_move(panel, fake_worker, make_snapshot
     assert panel.table.item(0, NAME_COL).flags() & Qt.ItemFlag.ItemIsEditable
 
 
+def test_lock_toggle_does_not_store_points(panel, config, fake_worker, make_snapshot, monkeypatch):
+    calls = []
+    monkeypatch.setattr(PositionTable, "update", lambda self, *a, **k: calls.append(a))
+    path = config.positions.path
+    before = path.read_bytes() if path.exists() else None
+    enable(fake_worker, make_snapshot, locked=True)
+    enable(fake_worker, make_snapshot, locked=False)
+    assert calls == []
+    assert (path.read_bytes() if path.exists() else None) == before
+
+
 def test_no_snapshot_disables_plc_writes_only(panel):
     panel.table.selectRow(0)
     assert not panel.save_button.isEnabled()

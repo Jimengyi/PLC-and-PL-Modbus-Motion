@@ -19,10 +19,6 @@ from plc_motion.ui.tray import TrayState
 pytestmark = pytest.mark.e2e
 
 AXES = range(1, 8)
-FREEZE_BUG = (
-    "產品 bug：鎖定狀態切換時 PointsPanel._set_editable 對 200 列逐格 setFlags，觸發 itemChanged"
-    " → _store 把 positions.csv 寫上千次，UI 執行緒凍結約 5 秒"
-)
 
 
 def lit(lamp) -> bool:
@@ -469,7 +465,6 @@ def post_release(button) -> None:
     QApplication.postEvent(button, event)
 
 
-@pytest.mark.xfail(strict=True, reason=FREEZE_BUG)
 def test_ac20_jog_release_writes_zero_within_100ms(e2e, qtbot):
     started(e2e)
     jog_plus = e2e.app.axis_page.jog_plus
