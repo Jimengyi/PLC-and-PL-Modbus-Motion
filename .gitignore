@@ -1,1 +1,11 @@
 .obsidian/workspace.json
+
+# Python（app/）
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+*.spec.bak

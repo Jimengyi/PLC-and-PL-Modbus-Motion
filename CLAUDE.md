@@ -4,8 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 專案性質
 
-- 純文件 repo（Obsidian vault），沒有程式碼、build、lint 或測試指令。
-- 內容為 PLC 與 PC（LabVIEW）之間以 Modbus 控制七軸運動（六軸平台 X/Y/Z/RX/RY/RZ + 第七軸升降軸）的通訊規格。
+- repo 根目錄是 Obsidian vault，`docs/` 放 PLC 與 PC 之間以 Modbus 控制七軸運動（六軸平台 X/Y/Z/RX/RY/RZ + 第七軸升降軸）的通訊規格。
+- `app/` 是 PC 端 Modbus Master 程式：Python 3.14、uv、PySide6、pymodbus，打包用 PyInstaller onedir。技術棧決策見 `docs/bootstrap/bootstrap-plc-motion-master.md`。
+
+## app/ 指令
+
+- 一律在 `app\` 下執行：`uv sync`、`uv run plc-motion`、`uv run pytest`、`uv run ruff check .`、`uv run ruff format .`。
+- 沒有實機 PLC：測試與手動驗證都對內建的模擬 PLC（pymodbus server）跑。
+- 商用授權約束：不改用 PyQt（GPL）或 Nuitka（AGPL）；打包維持 onedir，讓 Qt DLL 保持可替換，並附授權聲明。
 
 ## 文件分工與優先順序
 
