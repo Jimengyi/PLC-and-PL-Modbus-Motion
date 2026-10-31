@@ -31,14 +31,18 @@ from PySide6.QtWidgets import (
 
 from plc_motion.engine import (
     CommandRejected,
+    DisconnectedWhileMoving,
     EngineEvent,
+    JogResidualCleared,
     Notice,
     OperationFinished,
+    ResidualDetected,
     ResultKind,
 )
 from plc_motion.plc.snapshot import Snapshot
 from plc_motion.settings.loader import AppConfig
 from plc_motion.ui.dialogs import TextDialog
+from plc_motion.ui.residual_dialog import ResidualDialog
 from plc_motion.ui.theme import apply_theme, color, current_theme, set_state
 from plc_motion.ui.tray import APP_TITLE
 from plc_motion.worker import EngineStatus
@@ -160,6 +164,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
 
+        self.residual_dialog = ResidualDialog(config, worker, self)
+        self.residual_dialog.finished.connect(self._update_residual_entry)
         self._build_toolbar()
         self._build_body()
         self._build_status_bar()
@@ -194,6 +200,9 @@ class MainWindow(QMainWindow):
         self.servo_off_button.clicked.connect(lambda: self._worker.servo_all(False))
         self.reset_button = QPushButton("全部 Reset Alarm")
         self.reset_button.clicked.connect(self._worker.reset_all)
+        self.residual_button = QPushButton("殘留交握…")
+        self.residual_button.setToolTip("重新開啟殘留交握視窗")
+        self.residual_button.clicked.connect(self.residual_dialog.popup)
         self.write_buttons = [self.servo_on_button, self.servo_off_button, self.reset_button]
         self.theme_button = QPushButton()
         self.theme_button.clicked.connect(self.toggle_theme)
@@ -210,6 +219,8 @@ class MainWindow(QMainWindow):
         self.toolbar.addSeparator()
         for button in self.write_buttons:
             self.toolbar.addWidget(button)
+        self._residual_action = self.toolbar.addWidget(self.residual_button)
+        self._residual_action.setVisible(False)
         self.toolbar.addWidget(spacer)
         self.toolbar.addWidget(self.theme_button)
 
@@ -256,6 +267,9 @@ class MainWindow(QMainWindow):
             self._set_connection(False)
         self._update_estop(snapshot)
         self._update_write_buttons()
+        if not status.residual:
+            self._residual_action.setVisible(False)
+            self.residual_dialog.hide()
 
     def on_connection_changed(self, connected: bool) -> None:
         self._set_connection(connected)
@@ -271,6 +285,40 @@ class MainWindow(QMainWindow):
             self._show_finished(event)
         elif isinstance(event, Notice):
             self.show_message(event.text)
+        elif isinstance(event, ResidualDetected):
+            self._show_residual(event)
+        elif isinstance(event, JogResidualCleared):
+            self.show_message(f"第 {event.axis} 軸 JOG 於斷線期間未放開，已寫回 0", "fault")
+        elif isinstance(event, DisconnectedWhileMoving):
+            self._show_moving(event)
+
+    def _show_residual(self, event: ResidualDetected) -> None:
+        axes = "、".join(str(i.axis) for i in event.axes)
+        self.show_message(
+            f"偵測到殘留交握（第 {axes} 軸），寫入已鎖定",
+            "fault",
+            detail=self._residual_detail(event),
+        )
+        self.residual_dialog.set_residual(event.axes)
+        self._residual_action.setVisible(True)
+        self.residual_dialog.popup()
+
+    @staticmethod
+    def _residual_detail(event: ResidualDetected) -> str:
+        return "偵測到殘留交握：" + "、".join(f"第 {i.axis} 軸" for i in event.axes)
+
+    def _update_residual_entry(self, _result: int) -> None:
+        # 寫回 0（accepted）後入口收起；保持鎖定（rejected）則保留入口
+        if _result == ResidualDialog.DialogCode.Accepted:
+            self._residual_action.setVisible(False)
+
+    def _show_moving(self, event: DisconnectedWhileMoving) -> None:
+        axes = "、".join(str(n) for n in event.axes)
+        summary = f"第 {axes} 軸斷線時動作中，軸可能仍在移動，請按急停"
+        self.show_message(summary, "fault")
+        self.event_dialog.setWindowTitle("斷線時軸動作中")
+        self.event_dialog.set_content("軸可能仍在移動，請按急停", f"第 {axes} 軸", "fault")
+        self.event_dialog.popup()
 
     def _show_rejected(self, event: CommandRejected) -> None:
         heading = f"{event.command}未執行：共 {len(event.reasons)} 項不符"

@@ -288,3 +288,5 @@ QFrame#axisRow QCheckBox::indicator:checked { background-color: #0a84ff; border-
 /* ---- 點位表 ---- */
 
 QTableWidget { gridline-color: #48484a; }
+
+QDialog QLabel[state="fault"] { color: #ff6961; background: transparent; }
