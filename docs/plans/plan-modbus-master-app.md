@@ -49,7 +49,7 @@ Base branch: main @ c3aa3a1
 
 ## Tasks
 
-### Task 1: 數值換算 codec [ ]
+### Task 1: 數值換算 codec [x]
 
 Files:
 - Create: `app/src/plc_motion/codec.py`
@@ -72,10 +72,10 @@ def decimals_for(scale: int) -> int: ...             # 10000 → 4、100 → 2
 測試 seam：上列五個函式的回傳值
 
 驗收：（契約層）
-- [ ] −100 mm（倍率 10000）→ `split_i32(to_raw(-100, 10000)) == (48576, 65520)`；`join_i32(48576, 65520) == -1000000`
-- [ ] README「I32 拆分範例」表的 7 列逐列成立（含 Z = −2.3456 mm → (42080, 65535)）
-- [ ] −2.5 mm 與 7.5 mm 的換算無浮點誤差造成的 ±1（例：`to_raw(7.5, 10000) == 75000`、`to_raw(150.25, 100) == 15025`）
-- [ ] Run: `cd app && uv run pytest tests/test_codec.py -v` → 全綠
+- [x] −100 mm（倍率 10000）→ `split_i32(to_raw(-100, 10000)) == (48576, 65520)`；`join_i32(48576, 65520) == -1000000`
+- [x] README「I32 拆分範例」表的 7 列逐列成立（含 Z = −2.3456 mm → (42080, 65535)）
+- [x] −2.5 mm 與 7.5 mm 的換算無浮點誤差造成的 ±1（例：`to_raw(7.5, 10000) == 75000`、`to_raw(150.25, 100) == 15025`）
+- [x] Run: `cd app && uv run pytest tests/test_codec.py -v` → 全綠
 
 ---
 
