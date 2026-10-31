@@ -1,0 +1,246 @@
+/* 深色主題（spec FR-45）。色值與 plc_motion.ui.theme 的 dark 色表一致。 */
+
+QWidget {
+    background-color: #1d1d1f;
+    color: #f5f5f7;
+    font-family: "Microsoft JhengHei UI", "Segoe UI", sans-serif;
+    font-size: 10pt;
+}
+
+QMainWindow, QDialog {
+    background-color: #1d1d1f;
+}
+
+QToolTip {
+    background-color: #2d2d2f;
+    color: #f5f5f7;
+    border: 1px solid #48484a;
+    padding: 4px;
+}
+
+/* ---- 工具列 ---- */
+
+QToolBar#toolbar {
+    background-color: #2d2d2f;
+    border: none;
+    border-bottom: 1px solid #48484a;
+    padding: 6px 10px;
+    spacing: 8px;
+}
+
+QToolBar#toolbar QLabel {
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 6px;
+    font-weight: 600;
+}
+
+QToolBar#toolbar QLabel[state="ok"] { color: #32d74b; border: 1px solid #32d74b; }
+QToolBar#toolbar QLabel[state="busy"] { color: #0a84ff; border: 1px solid #0a84ff; }
+QToolBar#toolbar QLabel[state="fault"] { color: #ff453a; border: 1px solid #ff453a; }
+QToolBar#toolbar QLabel[state="off"] { color: #636366; border: 1px solid #636366; }
+
+QToolBar#toolbar::separator {
+    background-color: #48484a;
+    width: 1px;
+    margin: 4px 6px;
+}
+
+/* ---- 按鈕 ---- */
+
+QPushButton, QToolButton {
+    background-color: #3d3d3f;
+    color: #f5f5f7;
+    border: 1px solid #48484a;
+    border-radius: 6px;
+    padding: 5px 14px;
+}
+
+QPushButton:hover, QToolButton:hover {
+    border-color: #0a84ff;
+}
+
+QPushButton:pressed, QToolButton:pressed {
+    background-color: #0a84ff;
+    color: #ffffff;
+}
+
+QPushButton:disabled, QToolButton:disabled {
+    background-color: #2d2d2f;
+    color: #636366;
+    border-color: #3d3d3f;
+}
+
+QPushButton:default {
+    border-color: #0a84ff;
+}
+
+/* ---- 左側導覽 ---- */
+
+QFrame#nav {
+    background-color: #2d2d2f;
+    border: none;
+    border-right: 1px solid #48484a;
+}
+
+QFrame#nav QToolButton {
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 10px;
+    text-align: left;
+}
+
+QFrame#nav QToolButton#navToggle {
+    font-size: 16pt;
+    padding: 2px 10px;
+    color: #98989d;
+}
+
+QFrame#nav QToolButton:hover {
+    background-color: #3d3d3f;
+}
+
+QFrame#nav QToolButton:checked {
+    background-color: #0a84ff;
+    color: #ffffff;
+}
+
+/* ---- 狀態列 ---- */
+
+QStatusBar {
+    background-color: #2d2d2f;
+    border-top: 1px solid #48484a;
+    color: #98989d;
+}
+
+QStatusBar QLabel {
+    background: transparent;
+    color: #98989d;
+    padding: 0 8px;
+}
+
+QStatusBar QPushButton#message {
+    background: transparent;
+    border: none;
+    color: #f5f5f7;
+    padding: 2px 8px;
+    text-align: left;
+}
+
+QStatusBar QPushButton#message:hover {
+    text-decoration: underline;
+}
+
+QStatusBar QPushButton#message[state="fault"] { color: #ff453a; }
+QStatusBar QPushButton#message[state="ok"] { color: #32d74b; }
+
+/* ---- 輸入與清單 ---- */
+
+QLineEdit, QSpinBox, QDoubleSpinBox, QComboBox, QPlainTextEdit, QTextEdit {
+    background-color: #2d2d2f;
+    color: #f5f5f7;
+    border: 1px solid #48484a;
+    border-radius: 4px;
+    padding: 3px 6px;
+    selection-background-color: #0a84ff;
+    selection-color: #ffffff;
+}
+
+QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus, QComboBox:focus {
+    border-color: #0a84ff;
+}
+
+QLineEdit:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QComboBox:disabled {
+    color: #636366;
+}
+
+QTableView, QTreeView, QListView {
+    background-color: #2d2d2f;
+    alternate-background-color: #1d1d1f;
+    color: #f5f5f7;
+    border: 1px solid #48484a;
+    gridline-color: #48484a;
+    selection-background-color: #0a84ff;
+    selection-color: #ffffff;
+}
+
+QHeaderView::section {
+    background-color: #3d3d3f;
+    color: #f5f5f7;
+    border: none;
+    border-right: 1px solid #48484a;
+    border-bottom: 1px solid #48484a;
+    padding: 4px 6px;
+}
+
+QGroupBox {
+    border: 1px solid #48484a;
+    border-radius: 8px;
+    margin-top: 14px;
+    padding: 10px 8px 8px 8px;
+    font-weight: 600;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 10px;
+    padding: 0 4px;
+    color: #98989d;
+}
+
+QTabWidget::pane {
+    border: 1px solid #48484a;
+    border-radius: 6px;
+}
+
+QTabBar::tab {
+    background-color: #2d2d2f;
+    color: #98989d;
+    border: 1px solid #48484a;
+    padding: 6px 16px;
+}
+
+QTabBar::tab:selected {
+    background-color: #3d3d3f;
+    color: #f5f5f7;
+}
+
+QCheckBox, QRadioButton {
+    background: transparent;
+    spacing: 6px;
+}
+
+QMenu {
+    background-color: #2d2d2f;
+    color: #f5f5f7;
+    border: 1px solid #48484a;
+}
+
+QMenu::item:selected {
+    background-color: #0a84ff;
+    color: #ffffff;
+}
+
+QScrollBar:vertical, QScrollBar:horizontal {
+    background: #1d1d1f;
+    border: none;
+}
+
+QScrollBar::handle {
+    background: #3d3d3f;
+    border-radius: 4px;
+    min-height: 24px;
+    min-width: 24px;
+}
+
+/* ---- 事件與錯誤視窗 ---- */
+
+QDialog QLabel#heading {
+    background: transparent;
+    font-size: 11pt;
+    font-weight: 600;
+}
+
+QDialog QLabel#heading[state="fault"] { color: #ff453a; }
+QDialog QLabel#heading[state="ok"] { color: #32d74b; }

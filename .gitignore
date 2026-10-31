@@ -9,6 +9,7 @@ __pycache__/
 build/
 dist/
 *.spec.bak
+app/logs/
 
 # craft 設計預覽與審查暫存
 .craft/
