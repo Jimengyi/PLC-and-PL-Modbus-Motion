@@ -588,11 +588,13 @@ Related: spec FR-16、FR-27 ~ FR-33；預覽 `layout-v3-page.html`（主 repo �
 
 ---
 
-### Task 13: 點位表面板 [ ]
+### Task 13: 點位表面板 [x]
 
 Files:
 - Create: `app/src/plc_motion/ui/points_panel.py`
 - Modify: `app/src/plc_motion/ui/axis_page.py`（嵌入面板）
+- Modify: `app/src/plc_motion/ui/themes/dark.qss`、`app/src/plc_motion/ui/themes/light.qss`（表格格線色）
+- Modify: `app/src/plc_motion/ui/theme.py`（`apply_theme` 先更新目前主題再套樣式，讓重畫取得新主題色）
 - Test: `app/tests/ui/test_points_panel.py`
 
 Difficulty: 簡單
@@ -605,13 +607,13 @@ Related: spec FR-34 ~ FR-36；Task 3 的 `PositionTable`
 測試 seam：pytest-qt 操作 `PointsPanel`，斷言 `positions.csv` 內容與假 worker 收到的呼叫
 
 驗收：（契約層）
-- [ ] Name、Description 雙擊編輯後立即存檔；座標手動輸入立即存檔
-- [ ] 「存入目前位置」把最新快照的七軸位置寫入選定點位並存檔
-- [ ] 「移動到此點」只對勾選軸呼叫 `move(relative=False)`，目標為該點位值、速度取面板速度
-- [ ] 超出軟體極限的座標格為異常色
-- [ ] 匯入：錯誤檔顯示原因且表不變；合法檔確認後取代，取消不變。匯出另存 CSV
-- [ ] 鎖定時存入、編輯、匯入皆不可用
-- [ ] Run: `cd app && uv run pytest tests/ui/test_points_panel.py -v` → 全綠
+- [x] Name、Description 雙擊編輯後立即存檔；座標手動輸入立即存檔
+- [x] 「存入目前位置」把最新快照的七軸位置寫入選定點位並存檔
+- [x] 「移動到此點」只對勾選軸呼叫 `move(relative=False)`，目標為該點位值、速度取面板速度
+- [x] 超出軟體極限的座標格為異常色
+- [x] 匯入：錯誤檔顯示原因且表不變；合法檔確認後取代，取消不變。匯出另存 CSV
+- [x] 鎖定時存入、編輯、匯入皆不可用
+- [x] Run: `cd app && uv run pytest tests/ui/test_points_panel.py -v` → 全綠
 
 ---
 
