@@ -30,7 +30,10 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-markers = ["slow: 耗時測試（PyInstaller 打包），預設跳過，以 -m slow 執行"]
+markers = [
+    "slow: 耗時測試（PyInstaller 打包），預設跳過，以 -m slow 執行",
+    "e2e: 端到端測試（SimServer＋真 MainWindow／PlcWorker，走 TCP），預設全套也會跑",
+]
 addopts = "-m 'not slow'"
 
 [tool.ruff]
