@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from plc_motion.codec import I32_MAX, I32_MIN
 from plc_motion.sim.server import SimServer
 from plc_motion.sim.sim_log import format_time
 
@@ -69,7 +70,7 @@ class SimWindow(QWidget):
 
         row = QHBoxLayout()
         self.position_spin = QDoubleSpinBox()
-        self.position_spin.setRange(-1e6, 1e6)
+        self._update_position_range()
         self.position_spin.setDecimals(4)
         self.position_button = QPushButton("設定位置")
         self.position_button.clicked.connect(self._set_position)
@@ -143,8 +144,13 @@ class SimWindow(QWidget):
     def axis(self) -> int:
         return self.axis_combo.currentData()
 
+    def _update_position_range(self) -> None:
+        scale = self._server.points.get(f"Current Position {self.axis}").scale
+        self.position_spin.setRange(I32_MIN / scale, I32_MAX / scale)
+
     def _load_axis_state(self) -> None:
         st = self._state[self.axis]
+        self._update_position_range()
         for check, key in (
             (self.pos_limit_check, "pos"),
             (self.neg_limit_check, "neg"),

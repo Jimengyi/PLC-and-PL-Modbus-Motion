@@ -73,6 +73,14 @@ def test_set_position_button_writes_current_position(window, server):
     assert server.model.read("Current Position 4") == 1250  # 第 4 軸 1 deg = 100
 
 
+def test_position_spin_range_is_clamped_to_i32_of_axis_scale(window, server):
+    select_axis(window, 1)
+    window.position_spin.setValue(1e6)
+    assert window.position_spin.value() <= 2147483647 / 10000
+    window.position_button.click()  # 不應拋 ValueError
+    assert server.model.read("Current Position 1") <= 2147483647
+
+
 def test_inject_alarm_button_sets_code_and_persistent(window, server):
     select_axis(window, 2)
     window.alarm_code_spin.setValue(7)
