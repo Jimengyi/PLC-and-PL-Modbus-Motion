@@ -207,7 +207,7 @@ Related: spec FR-55、FR-2、FR-3；`docs/七軸_Modbus位址表.md`；使用者
 
 ---
 
-### Task 5: PLC 讀寫介面、快照與 PLC 行為模型 [ ]
+### Task 5: PLC 讀寫介面、快照與 PLC 行為模型 [x]
 
 Files:
 - Create: `app/src/plc_motion/plc/__init__.py`
@@ -257,14 +257,16 @@ class ModelPort(PlcPort):
     def __init__(self, model: PlcModel): ...
 ```
 
+已落地的額外公開介面：`PlcModel.points`、`PlcModel.has_tag(tag)`、`snapshot.is_triggered(point, raw)`；`PlcCommError(message, tag=None, address=None)`。
+
 測試 seam：`PlcModel` 透過 `master_write`／`step`／`read` 觀測；`Snapshot` 以 `ModelPort.read_all()` 取得
 
 驗收：（契約層）
-- [ ] FR-52 每一條各至少一個案例（Servo→Ready、待機複製命令碼含複製 0、Request 上升緣→Busy/Reply、Request=0→Reply=0 後才移動、Code 2 移到目標、Code 1 先 Busy=0 後 Find Home Finish=1 且中間間隔長於 0.2 秒、JOG 持續移動與停止、移動中碰極限 Alarm 2/3、原點復歸中碰極限不報、待機朝已觸發極限下命令報 Alarm、動作中 Servo OFF Alarm 4、急停、Reset Alarm 排除與未排除、停在極限上可清除）
-- [ ] 注入 Alarm：動作中立即停止、Busy=0、Ready=0；勾「原因持續」時 Reset Alarm 不清除，取消後可清除
-- [ ] 故障「不回 Reply」「不複製命令碼」逐軸生效
-- [ ] B 接點判讀依 `IoPoint.is_b_contact`：極限、急停的 raw 值與 `Snapshot` 的 triggered／estop_ok 相反
-- [ ] Run: `cd app && uv run pytest tests/plc -v` → 全綠
+- [x] FR-52 每一條各至少一個案例（Servo→Ready、待機複製命令碼含複製 0、Request 上升緣→Busy/Reply、Request=0→Reply=0 後才移動、Code 2 移到目標、Code 1 先 Busy=0 後 Find Home Finish=1 且中間間隔長於 0.2 秒、JOG 持續移動與停止、移動中碰極限 Alarm 2/3、原點復歸中碰極限不報、待機朝已觸發極限下命令報 Alarm、動作中 Servo OFF Alarm 4、急停、Reset Alarm 排除與未排除、停在極限上可清除）
+- [x] 注入 Alarm：動作中立即停止、Busy=0、Ready=0；勾「原因持續」時 Reset Alarm 不清除，取消後可清除
+- [x] 故障「不回 Reply」「不複製命令碼」逐軸生效
+- [x] B 接點判讀依 `IoPoint.is_b_contact`：極限、急停的 raw 值與 `Snapshot` 的 triggered／estop_ok 相反
+- [x] Run: `cd app && uv run pytest tests/plc -v` → 全綠
 
 留給實作：
 - 模擬最大速度與原點復歸延遲；邊界：Busy=0 到 Find Home Finish=1 的間隔長於一個輪詢週期（200 ms）
