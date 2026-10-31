@@ -146,12 +146,13 @@ class DeviceSettings:
 
 ---
 
-### Task 3: 點位資料表 positions [ ]
+### Task 3: 點位資料表 positions [x]
 
 Files:
 - Create: `app/src/plc_motion/settings/positions.py`
 - Modify: `app/src/plc_motion/settings/loader.py`（接上 `AppConfig.positions`）
 - Test: `app/tests/settings/test_positions.py`
+- Modify: `app/tests/settings/test_device_axes.py`、`app/tests/settings/test_io_points.py`（資料夾檔案清單加入自動建立的 `positions.csv`）
 
 Difficulty: 簡單
 Depends on: Task 2
@@ -173,10 +174,10 @@ class PositionTable:
 測試 seam：`PositionTable` 的方法回傳值與 `positions.csv` 檔案內容
 
 驗收：（契約層）
-- [ ] `positions.csv` 不存在時 `load_config` 建立含 P001 ~ P200 的檔案，座標皆 0
-- [ ] 匯入：150 列、某座標為文字、缺欄、#Point 不是 P001 ~ P200 → 回傳錯誤、表與檔不變；合法檔 → 整份取代並存檔
-- [ ] 匯出檔可被 `import_file` 原樣匯回
-- [ ] Run: `cd app && uv run pytest tests/settings/test_positions.py -v` → 全綠
+- [x] `positions.csv` 不存在時 `load_config` 建立含 P001 ~ P200 的檔案，座標皆 0
+- [x] 匯入：150 列、某座標為文字、缺欄、#Point 不是 P001 ~ P200 → 回傳錯誤、表與檔不變；合法檔 → 整份取代並存檔
+- [x] 匯出檔可被 `import_file` 原樣匯回
+- [x] Run: `cd app && uv run pytest tests/settings/test_positions.py -v` → 全綠
 
 ---
 
