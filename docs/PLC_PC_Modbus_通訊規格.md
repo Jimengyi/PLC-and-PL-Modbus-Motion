@@ -67,8 +67,10 @@
 | 0           | 未定義      | -                | -                       |
 | 1           | 軸原點復歸    | 否                | 否                       |
 | 2           | 絕對移動 | 是，目標座標           | 是                       |
-| 3           | 相對移動 | 是，移動距離（可為負值）     | 是                       |
+| 3           | 相對移動（本專案 PLC 不支援） | 是，移動距離（可為負值）     | 是                       |
 | 4 ~ 16      | 保留，目前未規劃 | -                | -                       |
+
+- 本專案的 PLC 只支援 Action Code 1、2。相對移動由 PC 端以 `Current_Position` 加上移動距離換算成目標座標，改用 Action Code 2 下達；本文其餘提到 Action Code 3 之處僅適用於支援它的 PLC。
 
 ### 1.5 Alarm_Code 定義（初版）
 
@@ -199,7 +201,7 @@ Request / Reply 只負責「命令已被 PLC 接收」的交握；動作是否�
 
 ### 3.1 線性軸移動至目標座標（Action Code 2）— 正常流程
 
-相對移動（Action Code 3）流程相同，只是 `PC_Action_Code = 3`，`Move_Position` 寫入移動距離。
+相對移動（Action Code 3）流程相同，只是 `PC_Action_Code = 3`，`Move_Position` 寫入移動距離。本專案 PLC 不支援 Code 3，PC 端換算成目標座標後走本流程（見 1.4 節）。
 
 ```mermaid
 sequenceDiagram

@@ -24,7 +24,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - 通訊規格書只描述單一軸，不要寫入七軸內容；七軸資料放在位址表。
 - 改位址或單位時，三份 md 要一起檢查是否一致（位址表、規格書的位址表格與範例數值、README 的倍率）。
-- Position 倍率：X/Y/Z（第 1 ~ 3 軸）1 mm = 10000，RX/RY/RZ（第 4 ~ 6 軸）1 deg = 100，升降軸（第 7 軸）1 mm = 100。軸號與 X ~ RZ 的對應順序待確認。
+- Position 倍率：X/Y/Z（第 1 ~ 3 軸）1 mm = 10000，RX/RY/RZ（第 4 ~ 6 軸）1 deg = 100，升降軸（第 7 軸）1 mm = 100。軸號對應已確認：第 1 ~ 6 軸為 X ~ RZ，第 7 軸為升降軸。
+- 本專案 PLC 只支援 Action Code 1（原點復歸）、2（絕對移動）；相對移動由 PC 端換算成 Code 2。
 - xlsx 的中文以 Big5 類編碼儲存，直接用終端機輸出會亂碼；讀取需用標準庫（zipfile + xml）解析，環境沒有 openpyxl。
 - 文件中的圖表使用 mermaid（flowchart、sequenceDiagram），Obsidian 已裝 mermaid-popup 外掛。
 - `.obsidian/workspace.json` 會因 Obsidian 開啟而自動變動，提交時不要一併加入。
