@@ -182,6 +182,15 @@ def test_axis_number_out_of_range_is_reported(config_dir):
     assert any("缺少第 7 軸" in e for e in errors)
 
 
+@pytest.mark.parametrize("value", ["[1]", "{ a = 1 }"])
+def test_unhashable_axis_number_is_reported(config_dir, value):
+    _edit(config_dir / "axes.toml", "number = 1", f"number = {value}")
+
+    errors = _errors(config_dir)
+
+    assert any("軸號" in e and "不合法" in e for e in errors)
+
+
 def test_two_axis_errors_are_both_reported(config_dir):
     path = config_dir / "axes.toml"
     _edit(path, "soft_limit_min = -100.0", "soft_limit_min = 200.0")

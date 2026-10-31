@@ -108,7 +108,7 @@ def load_axes(path: Path) -> tuple[dict[int, AxisSettings] | None, list[str]]:
     for index, raw in enumerate(raw_axes, start=1):
         if isinstance(raw, dict):
             number = raw.get("number")
-            if number in seen:
+            if _is_axis_number(number) and number in seen:
                 errors.append(f"{FILE_NAME}：第 {number} 軸重複定義")
                 continue
             if _is_axis_number(number):
