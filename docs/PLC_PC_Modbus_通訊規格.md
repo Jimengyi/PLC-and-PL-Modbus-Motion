@@ -359,12 +359,14 @@ sequenceDiagram
 
 | 等待點 | 正常結束 | 異常結束 | 逾時 | 逾時處理 |
 |---|---|---|---|---|
-| 命令碼複製 | `PLC_Action_Code = PC_Action_Code` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 不發 Request，報錯：命令碼複製逾時 |
+| 命令碼複製 | `PLC_Action_Code = PC_Action_Code` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 不發 Request，寫入 `PC_Action_Code = 0`，報錯：命令碼複製逾時 |
 | 等待 Reply = 1 | `Reply = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 寫入 `Request = 0`、`PC_Action_Code = 0`，報錯：PLC 未回覆 |
 | 等待 Reply = 0 | `Reply = 0` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 報錯：交握未結束 |
 | 軸移動（Action Code 2） | `Ready = 1`、`Busy = 0` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 無（無窮等待） | - |
 | 原點復歸（Action Code 1） | `Ready = 1`、`Busy = 0`、`Find_Home_Finish = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 無（無窮等待） | - |
 | 異常復歸 | `Alarm_Code = 0`、`Ready = 1` | - | 5 秒（自 `Reset_Alarm` OFF 起算） | 判定復歸失敗，顯示錯誤碼，由 OP 手動重新觸發 |
+
+- 交握在等待動作完成之前，因逾時或上表「異常結束」條件提早結束時，PC 一律寫入 `Request = 0`、`PC_Action_Code = 0`，避免 `Request` 卡在 1、命令碼殘留到下一次命令。
 
 ```mermaid
 sequenceDiagram

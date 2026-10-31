@@ -78,6 +78,13 @@ C：單一背景執行緒 + 每軸狀態機（採用）
 
 - 問題：在 IO Monitor 把 JOG_Plus 或 Request 寫 1 會讓軸 Busy，而 Busy 觸發全域鎖後就無法寫回 0，軸停不下或卡在交握。
 - 否決「寫入不受鎖限制」與「工程模式」；採用使用者的做法：JOG Plus、JOG Minus、Request 在 IO Monitor 不顯示（Visible = X），其餘 Output 受動作鎖限制。
+- 2026-10-31 spec 審查追加：審查建議程式在 Visible 不是 X 時拒絕啟動。使用者否決，維持只由設定檔控制；代價是有人把 Visible 改成 O 時，從 IO Monitor 寫 JOG／Request 會卡在鎖定中寫不回 0。
+
+### 命令碼比對（2026-10-31 spec 審查追加）
+
+- 問題：PLC 待機時持續把 PC_Action_Code 複製到 PLC_Action_Code。上一次是 Code 2 的話 PLC_Action_Code 會停在 2，下一次 Code 2 的「等兩者一致」第一輪就成立，比對無效。
+- 曾提議 PC 在下命令前先寫 0 並等 PLC 複製 0（多一輪輪詢）；使用者改採：Request 寫回 0 時一併寫 PC_Action_Code = 0，待機後 PLC 自然複製 0。第二輪審查補上異常結束路徑：交握在等完成之前提早結束時也一律寫回兩者，避免 Request 卡在 1。
+- 這兩條改的是共用規格書（`docs/PLC_PC_Modbus_通訊規格.md` 2.1、2.2、3.4 節）。現場 PLC 若以 PC_Action_Code（而不是 PLC_Action_Code）決定動作，寫 0 會讓命令失效：接實機時要請 PLC 工程師確認。
 
 ### 軸控畫面
 
@@ -87,6 +94,7 @@ C：單一背景執行緒 + 每軸狀態機（採用）
   - 拿掉軸控頁的 Digital Inputs／Outputs 清單，完整 IO 在 IO Monitor。
   - IO Monitor 改為輸入／輸出兩欄，Check Status 用顏色區分。
   - 深色主題為主，可切換淺色。
+- 用語（2026-10-31 spec 審查追加）：規格書把 JOG 稱為「寸動」，本設計原本的「寸動」（按一次走固定距離）改稱「步進」，避免把「需要原點復歸」的限制誤套到 JOG。本文件上方的「寸動」均指步進。
 
 ## Recommendation
 
