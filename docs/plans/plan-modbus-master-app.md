@@ -4,7 +4,7 @@ created: 2026-10-31
 tags: [modbus, pyside6, motion]
 slug: modbus-master-app
 goal: "交付七軸 Modbus TCP Master 桌面程式 plc-motion 與開發用模擬 PLC plc-sim，依規格書交握控制七軸，設定全部外部化"
-status: approved
+status: done
 approved_by: user
 related: ["[[spec-modbus-master-app]]"]
 ---

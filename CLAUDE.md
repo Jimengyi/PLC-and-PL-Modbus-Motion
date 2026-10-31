@@ -10,8 +10,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## app/ 指令
 
 - 一律在 `app\` 下執行：`uv sync`、`uv run plc-motion`、`uv run pytest`、`uv run ruff check .`、`uv run ruff format .`。
-- 沒有實機 PLC：測試與手動驗證都對內建的模擬 PLC（pymodbus server）跑。
-- 商用授權約束：不改用 PyQt（GPL）或 Nuitka（AGPL）；打包維持 onedir，讓 Qt DLL 保持可替換，並附授權聲明。
+- 沒有實機 PLC：測試與手動驗證都對內建的模擬 PLC 跑。手動試用：`uv run plc-sim`（預設 127.0.0.1:5020）＋ `uv run plc-motion --host 127.0.0.1 --port 5020`；`--config DIR` 可指定設定資料夾。
+- 商用授權約束：不改用 PyQt（GPL）或 Nuitka（AGPL）；打包維持 onedir，讓 Qt DLL 保持可替換，並附授權聲明（含 LGPL／GPL 全文）。
+- 打包：`uv run python packaging/build.py`，產物在 `app/dist/plc-motion/`。打包測試標 `slow`，預設排除，用 `uv run pytest -m slow` 跑。
+- 全套測試含 e2e 約 4 分鐘，超過 Bash 工具預設 120 秒：背景執行或加長 timeout。
+- `plc-motion` 有全機共用的單一實例鎖：本機有 plc-motion 在跑時，進入點測試會 skip、打包 exe 測試會失敗。測完一律結束 plc-motion／plc-sim 行程；plc-sim 執行中 `uv run` 可能因檔案被鎖報 "Failed to spawn"。
+- 測試要載入預設設定時，先把 `app/config` 複製到 tmp 再載入：`load_config` 會自動建立 `positions.csv`，切主題會寫回 `device.toml`。
+- `uv sync` 遇 TLS `invalid peer certificate: UnknownIssuer` 時加 `--system-certs`。換 PySide6 套件後出現 QtCore「DLL load failed」：`uv sync --reinstall-package pyside6-essentials --reinstall-package shiboken6`。
+- PySide6 的 signal 接到 lambda 或非 QObject 方法時是 direct connection，會在發送端執行緒執行；要在 UI 執行緒處理必須接到 QObject 的 slot。
+- 規格、設計與實作計畫在 `docs/specs/`、`docs/design/`、`docs/plans/`（slug `modbus-master-app`）；系統結構見 `docs/design/design-system-blueprint.md`。
 
 ## 文件分工與優先順序
 
