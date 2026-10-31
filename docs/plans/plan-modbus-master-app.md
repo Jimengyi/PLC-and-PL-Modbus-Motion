@@ -353,7 +353,7 @@ class ModbusLink(PlcPort):
 
 ---
 
-### Task 8: 交握引擎（移動、原點復歸、鎖定、前置檢查） [ ]
+### Task 8: 交握引擎（移動、原點復歸、鎖定、前置檢查） [x]
 
 Files:
 - Create: `app/src/plc_motion/engine/__init__.py`
@@ -390,16 +390,16 @@ class MotionEngine:
 測試 seam：`MotionEngine` 公開方法＋事件；PLC 端以 `ModelPort(PlcModel)` 扮演，時間由測試推進（clock 與 `model.step` 同步）；寫入順序由測試端包一層記錄寫入的 `PlcPort` 觀測（不改 `plc/port.py`），或觀測 model 狀態
 
 驗收：（契約層）
-- [ ] 單軸 Code 2 寫入順序完全符合 FR-18（含 Request=0 同時 PC Action Code=0）；Code 1 不寫 Target Position 與 Speed
-- [ ] 同一軸連續兩次 Code 2：第二次在 PLC Action Code 由 0 變 2 之後才寫 Request=1
-- [ ] 三個等待點逾時（預設 5 秒）各一案例；逾時、等待中 Alarm、等待中急停結束時都寫回 Request=0 與 PC Action Code=0；等完成不逾時
-- [ ] 前置檢查：任一軸不符 → 回傳全部不符的軸與項目、零寫入（含未連線、Ready=0、軟體極限、Find Home Finish=0、急停、Alarm、Busy）
-- [ ] 相對移動與步進：目標＝最新快照位置＋移動量，只送 Code 2；`to_raw` 換算（X −2.5 mm 自 10 mm → 75000；升降 +1.25 → +125）
-- [ ] 多軸同時：各軸交握並行；一軸 Alarm 其他軸繼續；全部軸有結果才 `OperationFinished`
-- [ ] 原點復歸含第 7 軸：第 7 軸 Request=1 早於其他軸任何寫入；第 7 軸完成（含 Find Home Finish=1）後其餘軸同時開始；第 7 軸失敗 → 其餘「未執行」且零寫入；Busy=0 但 Find Home Finish=0 期間不判完成、仍鎖定
-- [ ] 鎖定條件：引擎建立後未呼叫 `on_connected`、`on_connected` 後第一次 tick 前、操作進行中、任一軸 Busy=1 時 `locked` 為真且命令被拒（發 `CommandRejected`）；操作結束且全部 Busy=0 後解除
-- [ ] `on_disconnected` 時進行中操作逐軸結果為「通訊中斷」
-- [ ] Run: `cd app && uv run pytest tests/engine/test_move.py tests/engine/test_home.py tests/engine/test_lock.py -v` → 全綠
+- [x] 單軸 Code 2 寫入順序完全符合 FR-18（含 Request=0 同時 PC Action Code=0）；Code 1 不寫 Target Position 與 Speed
+- [x] 同一軸連續兩次 Code 2：第二次在 PLC Action Code 由 0 變 2 之後才寫 Request=1
+- [x] 三個等待點逾時（預設 5 秒）各一案例；逾時、等待中 Alarm、等待中急停結束時都寫回 Request=0 與 PC Action Code=0；等完成不逾時
+- [x] 前置檢查：任一軸不符 → 回傳全部不符的軸與項目、零寫入（含未連線、Ready=0、軟體極限、Find Home Finish=0、急停、Alarm、Busy）
+- [x] 相對移動與步進：目標＝最新快照位置＋移動量，只送 Code 2；`to_raw` 換算（X −2.5 mm 自 10 mm → 75000；升降 +1.25 → +125）
+- [x] 多軸同時：各軸交握並行；一軸 Alarm 其他軸繼續；全部軸有結果才 `OperationFinished`
+- [x] 原點復歸含第 7 軸：第 7 軸 Request=1 早於其他軸任何寫入；第 7 軸完成（含 Find Home Finish=1）後其餘軸同時開始；第 7 軸失敗 → 其餘「未執行」且零寫入；Busy=0 但 Find Home Finish=0 期間不判完成、仍鎖定
+- [x] 鎖定條件：引擎建立後未呼叫 `on_connected`、`on_connected` 後第一次 tick 前、操作進行中、任一軸 Busy=1 時 `locked` 為真且命令被拒（發 `CommandRejected`）；操作結束且全部 Busy=0 後解除
+- [x] `on_disconnected` 時進行中操作逐軸結果為「通訊中斷」
+- [x] Run: `cd app && uv run pytest tests/engine/test_move.py tests/engine/test_home.py tests/engine/test_lock.py -v` → 全綠
 
 禁區：
 - `plc_motion.engine` 不 import PySide6；除了經由 `PlcPort`，不做任何 I/O
