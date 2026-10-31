@@ -696,12 +696,14 @@ Related: spec FR-51、FR-53、FR-56
 
 ---
 
-### Task 17: PyInstaller onedir 打包與授權聲明 [ ]
+### Task 17: PyInstaller onedir 打包與授權聲明 [x]
 
 Files:
 - Create: `app/packaging/plc_motion.spec`
 - Create: `app/packaging/build.py`
-- Create: `app/packaging/THIRD_PARTY_NOTICES.md`（或由 build.py 產生）
+- Create: `app/packaging/THIRD_PARTY_NOTICES.md`（靜態檔，由 build.py 複製）
+- Create: `app/packaging/entry.py`（PyInstaller 進入點）
+- Create: `app/packaging/LGPL-3.0.txt`、`app/packaging/GPL-3.0.txt`（Qt／PySide6 授權全文，由 build.py 複製進 `licenses/`）
 - Modify: `docs/bootstrap/bootstrap-plc-motion-master.md`（勾掉「PyInstaller 打包腳本與授權聲明檔」）
 - Modify: `app/pyproject.toml`（註冊 `slow` marker；`addopts` 預設排除 `slow`）
 - Test: `app/tests/test_packaging.py`
@@ -717,9 +719,9 @@ Related: spec FR-54、Hard Constraints；`docs/bootstrap/bootstrap-plc-motion-ma
 測試 seam：`build.py` 產出的資料夾內容；打包測試標記 `@pytest.mark.slow`，預設全套跳過，以 `-m slow` 執行
 
 驗收：（契約層）
-- [ ] 產出資料夾存在上述內容；搜尋不到 `sim_window`、`plc_sim` 相關模組
-- [ ] 把資料夾複製到另一路徑，執行 exe（不經 uv）加 `--host 127.0.0.1 --port 5020`，連上 `uv run plc-sim` 啟動的模擬器
-- [ ] Run: `cd app && uv run pytest tests/test_packaging.py -m slow -v` → 全綠
+- [x] 產出資料夾存在上述內容；搜尋不到 `sim_window`、`plc_sim` 相關模組
+- [x] 把資料夾複製到另一路徑，執行 exe（不經 uv）加 `--host 127.0.0.1 --port 5020`，連上 `uv run plc-sim` 啟動的模擬器
+- [x] Run: `cd app && uv run pytest tests/test_packaging.py -m slow -v` → 全綠
 
 禁區：
 - 不使用 onefile 模式
