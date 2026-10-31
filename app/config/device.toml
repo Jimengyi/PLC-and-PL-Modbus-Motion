@@ -1,0 +1,26 @@
+# PLC 連線設定
+[connection]
+# PLC 的 IP 位址
+host = "192.168.1.105"
+# Modbus TCP 埠號
+port = 502
+# 連線逾時（毫秒）
+timeout_ms = 2000
+
+[polling]
+# 輪詢週期（毫秒）
+interval_ms = 200
+
+[handshake]
+# 交握逾時（秒）：Request 送出後等不到 Reply 的上限
+timeout_s = 5
+# Reset Alarm 脈衝寬度（毫秒）
+reset_alarm_pulse_ms = 500
+
+[log]
+# 日誌保留天數
+retention_days = 30
+
+[ui]
+# 介面主題：dark 或 light
+theme = "dark"
