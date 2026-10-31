@@ -123,6 +123,23 @@ def test_out_of_soft_limit_cell_is_abnormal_color(panel, config, fake_worker, ma
     assert panel.table.item(0, Y_COL).background().color() == normal.color()
 
 
+def test_theme_switch_remarks_out_of_limit_cell(qtbot, panel, fake_worker, make_snapshot):
+    from PySide6.QtWidgets import QApplication
+
+    from plc_motion.ui.theme import apply_theme, color
+
+    enable(fake_worker, make_snapshot)
+    app = QApplication.instance()
+    try:
+        apply_theme(app, "dark")
+        panel.table.item(0, Y_COL).setText("100.5")
+        assert panel.table.item(0, Y_COL).background().color() == color("check_ng", "dark")
+        apply_theme(app, "light")
+        assert panel.table.item(0, Y_COL).background().color() == color("check_ng", "light")
+    finally:
+        apply_theme(app, "dark")
+
+
 def test_import_bad_file_shows_reason_and_keeps_table(
     panel, config, fake_worker, make_snapshot, tmp_path, monkeypatch
 ):

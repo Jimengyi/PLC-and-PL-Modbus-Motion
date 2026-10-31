@@ -70,8 +70,8 @@ def load_qss(name: str) -> str:
 
 def apply_theme(app: QApplication, name: str) -> None:
     global _current
+    _current = name  # 先更新：setStyleSheet 觸發的 StyleChange 處理端要讀到新主題色
     app.setStyleSheet(load_qss(name))
-    _current = name
 
 
 def current_theme() -> str:

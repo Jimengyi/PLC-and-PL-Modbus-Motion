@@ -10,7 +10,7 @@ import math
 import tempfile
 from pathlib import Path
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -185,6 +185,25 @@ class PointsPanel(QGroupBox):
         else:
             item.setBackground(QBrush())
             item.setToolTip("")
+
+    def changeEvent(self, event: QEvent) -> None:
+        super().changeEvent(event)
+        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange) and hasattr(
+            self, "table"
+        ):
+            self._remark_limits()
+
+    def _remark_limits(self) -> None:
+        """主題切換後依新主題色重畫超限標記。"""
+        self._loading = True
+        try:
+            for i, row in enumerate(self._positions.rows()):
+                for n, field in self._fields.items():
+                    item = self.table.item(i, FIRST_COORD_COL + n - 1)
+                    if item is not None:
+                        self._mark_limit(item, n, getattr(row, field))
+        finally:
+            self._loading = False
 
     def _selected_row(self) -> int | None:
         rows = self.table.selectionModel().selectedRows()
