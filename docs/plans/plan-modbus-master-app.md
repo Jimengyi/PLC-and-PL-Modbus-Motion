@@ -617,7 +617,7 @@ Related: spec FR-34 ~ FR-36；Task 3 的 `PositionTable`
 
 ---
 
-### Task 14: IO Monitor 頁 [ ]
+### Task 14: IO Monitor 頁 [x]
 
 Files:
 - Create: `app/src/plc_motion/ui/io_monitor.py`
@@ -635,13 +635,13 @@ Related: spec FR-37 ~ FR-40；Task 2 的 `IoPointTable.save_check_status`
 測試 seam：pytest-qt 操作 `IoMonitorPage`，斷言畫面項目、假 worker 收到的呼叫與 `io_points.csv` 內容
 
 驗收：（契約層）
-- [ ] 預設 config 下 JOG Plus、JOG Minus、Request 不出現；B 接點顯示「(B)」；Position 顯示換算值與單位
-- [ ] RW Boolean 雙擊切換呼叫 `write_point`；數值雙擊開輸入視窗，U16 0~65535、Speed 1~100、Position 以實際值換算 raw；超出範圍被拒
-- [ ] 鎖定時雙擊不呼叫 `write_point`
-- [ ] 右鍵設定 Check Status → 該列顏色、數量統計更新，檔案該欄立即改變；「全部重設為 Unchecked」經確認後執行
-- [ ] 文字搜尋篩選 Tag Name 與 Display Name
-- [ ] 自訂非軸 Tag（例：`Cylinder1 Up`）出現在正確欄
-- [ ] Run: `cd app && uv run pytest tests/ui/test_io_monitor.py -v` → 全綠
+- [x] 預設 config 下 JOG Plus、JOG Minus、Request 不出現；B 接點顯示「(B)」；Position 顯示換算值與單位
+- [x] RW Boolean 雙擊切換呼叫 `write_point`；數值雙擊開輸入視窗，U16 0~65535、Speed 1~100、Position 以實際值換算 raw；超出範圍被拒
+- [x] 鎖定時雙擊不呼叫 `write_point`
+- [x] 右鍵設定 Check Status → 該列顏色、數量統計更新，檔案該欄立即改變；「全部重設為 Unchecked」經確認後執行
+- [x] 文字搜尋篩選 Tag Name 與 Display Name
+- [x] 自訂非軸 Tag（例：`Cylinder1 Up`）出現在正確欄
+- [x] Run: `cd app && uv run pytest tests/ui/test_io_monitor.py -v` → 全綠
 
 ---
 
