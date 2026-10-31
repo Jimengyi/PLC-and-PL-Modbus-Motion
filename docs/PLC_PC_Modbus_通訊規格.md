@@ -159,13 +159,14 @@ Request / Reply 只負責「命令已被 PLC 接收」的交握；動作是否�
 3. PC 寫入 `PC_Action_Code`。
 4. PLC 在 `Ready = 1` 且 `Busy = 0` 時，將 `PC_Action_Code` 的值複製至 `PLC_Action_Code`；動作執行中不複製，`PLC_Action_Code` 維持執行中的命令碼。
 5. PC 讀取 `PLC_Action_Code`，確認 `PC_Action_Code = PLC_Action_Code` 後才發 Request。
+   - PC 每次把 `Request` 寫回 0 時，一併把 `PC_Action_Code` 寫為 0（見第 9 步）。動作結束、PLC 回到待機後會把 0 複製到 `PLC_Action_Code`，下一個命令即使碼相同，第 5 步的比對也能確認 PLC 收到的是新命令。
 
 ### 2.2 Request / Reply 交握
 
 6. PC 將 `Request` 設為 1。
 7. PLC 偵測到 `Request` 上升緣，設 `Busy = 1`、`Ready = 0`。
 8. PLC 設 `Reply = 1`。PLC 保證 PC 讀到 `Reply = 1` 時，`Busy = 1` 已成立。
-9. PC 偵測到 `Reply = 1`，將 `Request` 清為 0。
+9. PC 偵測到 `Reply = 1`，將 `Request` 清為 0，並將 `PC_Action_Code` 寫為 0。此時 PLC 動作中不複製，`PLC_Action_Code` 維持執行中的命令碼。
 10. PLC 偵測到 `Request = 0`，將 `Reply` 清為 0。此時 `Request = 0`、`Reply = 0`，交握結束。
 
 ### 2.3 動作執行與完成判斷
@@ -237,7 +238,7 @@ sequenceDiagram
         PC->>PLC: 讀取 Reply(M)
         PLC-->>PC: Reply
     end
-    PC->>PLC: 寫入 Request(M) = 0
+    PC->>PLC: 寫入 Request(M) = 0, PC_Action_Code(D) = 0
     Note over PLC: 偵測 Request 下降緣
     PLC->>PLC: Reply(M) = 0
     PC->>PLC: 讀取 Reply(M)
@@ -280,7 +281,7 @@ sequenceDiagram
     PLC->>PLC: Reply(M) = 1
     PC->>PLC: 讀取 Reply(M)
     PLC-->>PC: Reply=1
-    PC->>PLC: 寫入 Request(M) = 0
+    PC->>PLC: 寫入 Request(M) = 0, PC_Action_Code(D) = 0
     PLC->>PLC: Reply(M) = 0
     Note over PC,PLC: 交握結束
     Note over PLC: 原點復歸中
@@ -311,7 +312,7 @@ sequenceDiagram
     PC->>PLC: 寫入 Request(M) = 1
     PLC->>PLC: Busy(M) = 1, Ready(M) = 0
     PLC->>PLC: Reply(M) = 1
-    PC->>PLC: 寫入 Request(M) = 0
+    PC->>PLC: 寫入 Request(M) = 0, PC_Action_Code(D) = 0
     PLC->>PLC: Reply(M) = 0
     Note over PC,PLC: 交握結束
     end
@@ -359,7 +360,7 @@ sequenceDiagram
 | 等待點 | 正常結束 | 異常結束 | 逾時 | 逾時處理 |
 |---|---|---|---|---|
 | 命令碼複製 | `PLC_Action_Code = PC_Action_Code` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 不發 Request，報錯：命令碼複製逾時 |
-| 等待 Reply = 1 | `Reply = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 寫入 `Request = 0`，報錯：PLC 未回覆 |
+| 等待 Reply = 1 | `Reply = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 寫入 `Request = 0`、`PC_Action_Code = 0`，報錯：PLC 未回覆 |
 | 等待 Reply = 0 | `Reply = 0` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 報錯：交握未結束 |
 | 軸移動（Action Code 2） | `Ready = 1`、`Busy = 0` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 無（無窮等待） | - |
 | 原點復歸（Action Code 1） | `Ready = 1`、`Busy = 0`、`Find_Home_Finish = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 無（無窮等待） | - |
@@ -383,9 +384,9 @@ sequenceDiagram
         PC->>PLC: 讀取 Reply(M)
         PLC-->>PC: Reply=0
     end
-    Note over PC: 逾時 → 寫入 Request(M) = 0，報錯：PLC 未回覆
+    Note over PC: 逾時 → 寫入 Request(M) = 0、PC_Action_Code(D) = 0，報錯：PLC 未回覆
 
-    PC->>PLC: 寫入 Request(M) = 0
+    PC->>PLC: 寫入 Request(M) = 0, PC_Action_Code(D) = 0
     loop 最多 5 秒：等待 Reply=0
         PC->>PLC: 讀取 Reply(M)
         PLC-->>PC: Reply=1
