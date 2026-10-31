@@ -731,13 +731,14 @@ Related: spec FR-54、Hard Constraints；`docs/bootstrap/bootstrap-plc-motion-ma
 
 ---
 
-### Task 18: 端到端驗收（交握、連線、原點、步進與 JOG、Servo 與 Reset） [ ]
+### Task 18: 端到端驗收（交握、連線、原點、步進與 JOG、Servo 與 Reset） [x]
 
 Files:
 - Create: `app/tests/e2e/conftest.py`（在測試內啟動 `SimServer`＋真 `MainWindow`＋`PlcWorker`，走 TCP）
 - Create: `app/tests/e2e/test_e2e_motion.py`
 - Create: `app/tests/e2e/test_e2e_connection.py`
 - Modify: `app/pyproject.toml`（註冊 `e2e` marker）
+- Modify: `app/src/plc_motion/ui/points_panel.py`、`app/tests/ui/test_points_panel.py`（修正鎖定切換時誤觸存檔造成的畫面凍結）
 
 Difficulty: 複雜
 Depends on: Task 12、Task 14、Task 15、Task 16
@@ -746,32 +747,32 @@ Related: `docs/specs/spec-modbus-master-app.md` Acceptance Criteria（觀測點�
 測試 seam：真實 `MainWindow`（pytest-qt 點擊）＋真 TCP 連到 `SimServer`；觀測 `SimLog`、`PlcModel` 狀態、畫面控制項、日誌檔。e2e 測試標記 `@pytest.mark.e2e`，預設全套也要跑
 
 驗收：（契約層，逐字抄 spec）
-- [ ] AC-1：以 repo 提供的預設 `config` 啟動 `plc-motion --host 127.0.0.1 --port 5020` 連上 `plc-sim`，畫面顯示已連線，七軸位置與燈號與模擬器狀態一致。
-- [ ] AC-6：`plc-sim` 未啟動時開 `plc-motion`：主視窗出現、顯示未連線、所有寫入控制項反灰；之後啟動 `plc-sim` 再按重新連線，變成已連線。期間程式不自行重連。
-- [ ] AC-7：已連線時關閉 `plc-sim`，一個輪詢週期內畫面顯示未連線、系統匣圖示變為未連線狀態、日誌記錄斷線。
-- [ ] AC-39：對 X 開啟「不回 Reply」並下移動，在 Request = 1 之後、5 秒逾時之前按模擬器「中斷所有連線」，再按重新連線：跳出殘留交握視窗列出 X（Request = 1、PC Action Code = 2）；連線後到操作員選擇前，模擬器寫入紀錄沒有任何寫入。選「先不處理」維持鎖定；再從工具列開啟視窗選「寫回 0」，紀錄出現 X 的 Request = 0 與 PC Action Code = 0，之後解鎖。
-- [ ] AC-40：重現 AC-39 的殘留狀態後，從系統匣選單「結束」`plc-motion` 再重新啟動，啟動連線後同樣跳出殘留交握視窗。對 Y 開「不複製命令碼」下移動，於等待期間「中斷所有連線」再重新連線（Request = 0、PC Action Code = 2），同樣跳出視窗列出 Y。
-- [ ] AC-42：按住 JOG+ 時按模擬器「中斷所有連線」，模擬器的 X 持續移動、JOG Plus 1 仍為 1；按重新連線後，第一次輪詢之後紀錄出現 JOG Plus 1 = 0、X 停止，畫面出現對應提示，日誌有紀錄。
-- [ ] AC-8：三軸（X、Y、Z，已原點復歸）勾選、填不同目標、絕對模式執行：模擬器寫入紀錄中每軸的寫入順序符合 FR-18；三軸都開始移動後才有任一軸完成；最後一軸停止前所有寫入控制項反灰，停止後解鎖；最終位置等於目標。
-- [ ] AC-9：相對模式對 X 輸入 −2.5 mm、目前位置 10 mm：模擬器收到的 Target Position 為 75000（7.5 × 10000），Action Code 為 2；全程沒有寫入 Action Code 3。升降軸相對 +1.25 mm 時收到值為目前值 + 125。
-- [ ] AC-10：負值目標 −100 mm（X 軸）寫入後，模擬器端兩個 Word 為低位 48576、高位 65520；在模擬器把 X 位置設為 −2.3456 mm（FR-53）後畫面顯示 −2.3456。
-- [ ] AC-11：勾選 X、Y 移動，其中 Y 的 Find Home Finish = 0：顯示 Y 未原點復歸、模擬器寫入紀錄中沒有任何一筆寫入。目標超出 X 軟體極限時同樣全部不寫入並指出 X。
-- [ ] AC-12：多軸移動中，對 Y 注入 Alarm 2：Y 列顯示異常、X 繼續移動到目標；X 停止前寫入控制項維持反灰；結束訊息逐軸顯示 X 完成、Y Alarm 2。
-- [ ] AC-13：先完成一次 X 軸 Code 2 移動，再開啟「不複製命令碼」故障並再下一次 X 軸移動：約 5 秒後該軸以逾時結束，模擬器寫入紀錄中沒有 Request = 1。開啟「不回 Reply」：約 5 秒後逾時，紀錄中 Request = 1 之後有 Request = 0。兩者之後皆解鎖。
-- [ ] AC-41：交握等待期間的提早結束都會寫回 0：開「不複製命令碼」下移動，於等待期間注入 Alarm：紀錄中沒有 Request = 1，有 PC Action Code = 0；開「不回 Reply」下移動，於等待期間切換急停：紀錄中 Request = 1 之後有 Request = 0 與 PC Action Code = 0；AC-13 兩種逾時結束後，紀錄中都有 PC Action Code = 0。
-- [ ] AC-14：移動中切換急停：該操作以急停結束；解除急停後按全部 Reset Alarm，Alarm 歸 0、Ready = 1，七軸 Find Home Finish 顯示未完成，步進鍵反灰，下移動被擋（原因為未原點復歸）。
-- [ ] AC-37：同一軸連續下兩次 Code 2 移動：模擬器紀錄中每次 Request = 0 都伴隨 PC Action Code = 0；第二次移動在 PLC Action Code 由 0 變為 2 之後才送 Request = 1。
-- [ ] AC-15：全部原點復歸：模擬器寫入紀錄中第 7 軸的 Request = 1 早於第 1 ~ 6 軸任何一軸寫入 PC Action Code；第 1 ~ 6 軸在第 7 軸 Find Home Finish = 1 之後才開始，且彼此同時進行。
-- [ ] AC-16：全部原點復歸時對第 7 軸注入 Alarm：第 1 ~ 6 軸無任何寫入，結果顯示「未執行」。
-- [ ] AC-17：原點復歸完成判定：模擬器在 Busy = 0 後延遲設 Find Home Finish = 1 的期間，畫面仍視為動作中、未解鎖。
-- [ ] AC-18：選定 RX 軸按單軸原點復歸，只有 RX 有寫入。
-- [ ] AC-19：X 目前 10 mm、步距「長」設定 10 mm，按 X+ 一次：模擬器收到 Target Position 200000、Action Code 2。目標超出軟體極限時不寫入並提示。
-- [ ] AC-20：按住 JOG+ 期間模擬器 X 位置持續增加；以自動化測試記錄放開的時間，模擬器紀錄中 JOG Plus = 0 的時間晚於放開不超過 100 ms，位置停止。按住期間把焦點切到其他視窗，同樣在 100 ms 內收到 0。
-- [ ] AC-21：正極限觸發（模擬器端切換）時 JOG+ 反灰、JOG− 可用。
-- [ ] AC-22：程式啟動與結束時，模擬器寫入紀錄中都沒有 Servo Motor 的寫入；按全部 Servo ON 時七軸 Servo Motor 都收到 1。
-- [ ] AC-23：移動中全部 Servo OFF、全部 Reset Alarm 按鈕為反灰，點擊不產生寫入。
-- [ ] AC-24：對兩軸注入 Alarm，其中一軸勾選「原因持續」，按全部 Reset Alarm：只有這兩軸收到 Reset Alarm 1 → 0（間隔約 0.5 秒）；結果顯示一軸成功、一軸失敗；程式不自動再送。
-- [ ] Run: `cd app && uv run pytest tests/e2e/test_e2e_motion.py tests/e2e/test_e2e_connection.py -v` → 全綠
+- [x] AC-1：以 repo 提供的預設 `config` 啟動 `plc-motion --host 127.0.0.1 --port 5020` 連上 `plc-sim`，畫面顯示已連線，七軸位置與燈號與模擬器狀態一致。
+- [x] AC-6：`plc-sim` 未啟動時開 `plc-motion`：主視窗出現、顯示未連線、所有寫入控制項反灰；之後啟動 `plc-sim` 再按重新連線，變成已連線。期間程式不自行重連。
+- [x] AC-7：已連線時關閉 `plc-sim`，一個輪詢週期內畫面顯示未連線、系統匣圖示變為未連線狀態、日誌記錄斷線。
+- [x] AC-39：對 X 開啟「不回 Reply」並下移動，在 Request = 1 之後、5 秒逾時之前按模擬器「中斷所有連線」，再按重新連線：跳出殘留交握視窗列出 X（Request = 1、PC Action Code = 2）；連線後到操作員選擇前，模擬器寫入紀錄沒有任何寫入。選「先不處理」維持鎖定；再從工具列開啟視窗選「寫回 0」，紀錄出現 X 的 Request = 0 與 PC Action Code = 0，之後解鎖。
+- [x] AC-40：重現 AC-39 的殘留狀態後，從系統匣選單「結束」`plc-motion` 再重新啟動，啟動連線後同樣跳出殘留交握視窗。對 Y 開「不複製命令碼」下移動，於等待期間「中斷所有連線」再重新連線（Request = 0、PC Action Code = 2），同樣跳出視窗列出 Y。
+- [x] AC-42：按住 JOG+ 時按模擬器「中斷所有連線」，模擬器的 X 持續移動、JOG Plus 1 仍為 1；按重新連線後，第一次輪詢之後紀錄出現 JOG Plus 1 = 0、X 停止，畫面出現對應提示，日誌有紀錄。
+- [x] AC-8：三軸（X、Y、Z，已原點復歸）勾選、填不同目標、絕對模式執行：模擬器寫入紀錄中每軸的寫入順序符合 FR-18；三軸都開始移動後才有任一軸完成；最後一軸停止前所有寫入控制項反灰，停止後解鎖；最終位置等於目標。
+- [x] AC-9：相對模式對 X 輸入 −2.5 mm、目前位置 10 mm：模擬器收到的 Target Position 為 75000（7.5 × 10000），Action Code 為 2；全程沒有寫入 Action Code 3。升降軸相對 +1.25 mm 時收到值為目前值 + 125。
+- [x] AC-10：負值目標 −100 mm（X 軸）寫入後，模擬器端兩個 Word 為低位 48576、高位 65520；在模擬器把 X 位置設為 −2.3456 mm（FR-53）後畫面顯示 −2.3456。
+- [x] AC-11：勾選 X、Y 移動，其中 Y 的 Find Home Finish = 0：顯示 Y 未原點復歸、模擬器寫入紀錄中沒有任何一筆寫入。目標超出 X 軟體極限時同樣全部不寫入並指出 X。
+- [x] AC-12：多軸移動中，對 Y 注入 Alarm 2：Y 列顯示異常、X 繼續移動到目標；X 停止前寫入控制項維持反灰；結束訊息逐軸顯示 X 完成、Y Alarm 2。
+- [x] AC-13：先完成一次 X 軸 Code 2 移動，再開啟「不複製命令碼」故障並再下一次 X 軸移動：約 5 秒後該軸以逾時結束，模擬器寫入紀錄中沒有 Request = 1。開啟「不回 Reply」：約 5 秒後逾時，紀錄中 Request = 1 之後有 Request = 0。兩者之後皆解鎖。
+- [x] AC-41：交握等待期間的提早結束都會寫回 0：開「不複製命令碼」下移動，於等待期間注入 Alarm：紀錄中沒有 Request = 1，有 PC Action Code = 0；開「不回 Reply」下移動，於等待期間切換急停：紀錄中 Request = 1 之後有 Request = 0 與 PC Action Code = 0；AC-13 兩種逾時結束後，紀錄中都有 PC Action Code = 0。
+- [x] AC-14：移動中切換急停：該操作以急停結束；解除急停後按全部 Reset Alarm，Alarm 歸 0、Ready = 1，七軸 Find Home Finish 顯示未完成，步進鍵反灰，下移動被擋（原因為未原點復歸）。
+- [x] AC-37：同一軸連續下兩次 Code 2 移動：模擬器紀錄中每次 Request = 0 都伴隨 PC Action Code = 0；第二次移動在 PLC Action Code 由 0 變為 2 之後才送 Request = 1。
+- [x] AC-15：全部原點復歸：模擬器寫入紀錄中第 7 軸的 Request = 1 早於第 1 ~ 6 軸任何一軸寫入 PC Action Code；第 1 ~ 6 軸在第 7 軸 Find Home Finish = 1 之後才開始，且彼此同時進行。
+- [x] AC-16：全部原點復歸時對第 7 軸注入 Alarm：第 1 ~ 6 軸無任何寫入，結果顯示「未執行」。
+- [x] AC-17：原點復歸完成判定：模擬器在 Busy = 0 後延遲設 Find Home Finish = 1 的期間，畫面仍視為動作中、未解鎖。
+- [x] AC-18：選定 RX 軸按單軸原點復歸，只有 RX 有寫入。
+- [x] AC-19：X 目前 10 mm、步距「長」設定 10 mm，按 X+ 一次：模擬器收到 Target Position 200000、Action Code 2。目標超出軟體極限時不寫入並提示。
+- [x] AC-20：按住 JOG+ 期間模擬器 X 位置持續增加；以自動化測試記錄放開的時間，模擬器紀錄中 JOG Plus = 0 的時間晚於放開不超過 100 ms，位置停止。按住期間把焦點切到其他視窗，同樣在 100 ms 內收到 0。
+- [x] AC-21：正極限觸發（模擬器端切換）時 JOG+ 反灰、JOG− 可用。
+- [x] AC-22：程式啟動與結束時，模擬器寫入紀錄中都沒有 Servo Motor 的寫入；按全部 Servo ON 時七軸 Servo Motor 都收到 1。
+- [x] AC-23：移動中全部 Servo OFF、全部 Reset Alarm 按鈕為反灰，點擊不產生寫入。
+- [x] AC-24：對兩軸注入 Alarm，其中一軸勾選「原因持續」，按全部 Reset Alarm：只有這兩軸收到 Reset Alarm 1 → 0（間隔約 0.5 秒）；結果顯示一軸成功、一軸失敗；程式不自動再送。
+- [x] Run: `cd app && uv run pytest tests/e2e/test_e2e_motion.py tests/e2e/test_e2e_connection.py -v` → 全綠
 
 留給實作：
 - AC-40 的「結束再重新啟動」與 AC-6 的「未啟動時開程式」可在測試內以重建 `MainWindow`＋worker 模擬；邊界：PLC 端必須是同一個（狀態保留的）`SimServer`，且經由真 TCP
