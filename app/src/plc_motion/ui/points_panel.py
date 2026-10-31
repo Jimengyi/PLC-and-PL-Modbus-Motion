@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
     QFileDialog,
+    QGridLayout,
     QGroupBox,
     QHBoxLayout,
     QLabel,
@@ -71,10 +72,10 @@ class PointsPanel(QGroupBox):
             | QAbstractItemView.EditTrigger.EditKeyPressed
         )
         self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setColumnWidth(0, 56)
-        self.table.setColumnWidth(NAME_COL, 110)
+        self.table.setColumnWidth(0, 52)
+        self.table.setColumnWidth(NAME_COL, 90)
         for col in range(FIRST_COORD_COL, DESC_COL):
-            self.table.setColumnWidth(col, 84)
+            self.table.setColumnWidth(col, 78)
         self._populate()
         self.table.itemChanged.connect(self._on_item_changed)
         self.table.itemSelectionChanged.connect(self._update_controls)
@@ -83,14 +84,15 @@ class PointsPanel(QGroupBox):
         self.selected_label = QLabel()
         self.selected_label.setObjectName("selectedTitle")
         self.axis_checks: dict[int, QCheckBox] = {}
-        checks = QHBoxLayout()
-        for n in self._fields:
+        checks = QGridLayout()  # 4 + 3 兩列，標籤用完整軸名
+        checks.setHorizontalSpacing(12)
+        for i, n in enumerate(self._fields):
             box = QCheckBox(config.axes[n].name)
             box.setChecked(True)
             box.toggled.connect(self._update_controls)
-            checks.addWidget(box)
+            checks.addWidget(box, i // 4, i % 4)
             self.axis_checks[n] = box
-        checks.addStretch(1)
+        checks.setColumnStretch(4, 1)
         self.speed = QSpinBox()
         self.speed.setRange(SPEED_MIN, SPEED_MAX)
         self.speed.setSuffix(" %")
@@ -112,28 +114,40 @@ class PointsPanel(QGroupBox):
         self.lock_label.setObjectName("lockHint")
         self.lock_label.setWordWrap(True)
 
+        # 操作區：左欄選取點位、勾選軸、速度；右欄按鈕
+        left = QVBoxLayout()
+        left.addWidget(self.selected_label)
+        left.addWidget(QLabel("移動的軸（勾選）"))
+        left.addLayout(checks)
+        left.addLayout(speed_row)
+        left.addStretch(1)
+        buttons = QGridLayout()
+        buttons.addWidget(self.move_button, 0, 0)
+        buttons.addWidget(self.save_button, 1, 0)
+        buttons.addWidget(self.import_button, 0, 1)
+        buttons.addWidget(self.export_button, 1, 1)
+        buttons.setRowStretch(2, 1)
+        ops_row = QHBoxLayout()
+        ops_row.addLayout(left, 1)
+        ops_row.addLayout(buttons, 1)
         ops = QVBoxLayout()
-        ops.addWidget(self.selected_label)
-        ops.addWidget(QLabel("移動的軸（勾選）"))
-        ops.addLayout(checks)
-        ops.addLayout(speed_row)
-        ops.addWidget(self.move_button)
-        ops.addWidget(self.save_button)
-        ops.addSpacing(8)
-        ops.addWidget(self.import_button)
-        ops.addWidget(self.export_button)
+        ops.addLayout(ops_row)
         ops.addWidget(self.lock_label)
-        ops.addStretch(1)
-        ops_widget = QWidget()
-        ops_widget.setLayout(ops)
-        ops_widget.setFixedWidth(260)
+        self.ops_box = QGroupBox("點位操作")
+        self.ops_box.setLayout(ops)
 
-        layout = QHBoxLayout(self)
-        layout.addWidget(self.table, 1)
-        layout.addWidget(ops_widget, 0)
+        # 預設表格在上、操作區在下；軸控頁會以 take_ops_box() 把操作區移到步進鍵盤下方
+        self._layout = QVBoxLayout(self)
+        self._layout.addWidget(self.table, 1)
+        self._layout.addWidget(self.ops_box, 0)
 
         worker.snapshot_ready.connect(self.on_snapshot)
         self._update_controls()
+
+    def take_ops_box(self) -> QGroupBox:
+        """把操作區從本面板的版面移出，交給呼叫端擺放（面板只剩表格）。"""
+        self._layout.removeWidget(self.ops_box)
+        return self.ops_box
 
     # ---- 表格內容 ----
 

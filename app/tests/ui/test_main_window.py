@@ -27,8 +27,10 @@ from plc_motion.engine import (
 from plc_motion.plc import PlcModel
 from plc_motion.settings import load_config
 from plc_motion.sim import SimServer
+from plc_motion.ui.axis_page import AxisPage
 from plc_motion.ui.dialogs import ExceptionReporter
 from plc_motion.ui.main_window import MainWindow
+from plc_motion.ui.points_panel import DESC_COL
 from plc_motion.ui.theme import apply_theme, load_qss
 
 
@@ -61,6 +63,29 @@ def restore_stylesheet():
 def test_minimum_size_is_1600x900(window):
     assert window.minimumSize().width() == 1600
     assert window.minimumSize().height() == 900
+
+
+@pytest.mark.parametrize("theme", ["dark", "light"])
+def test_points_layout_readable_at_minimum_size(window, config, fake_worker, qtbot, theme):
+    """1600×900 下：點位操作區的七個軸勾選框標籤完整，點位表不捲動即可看到 點位 ~ 升降 欄。"""
+    apply_theme(QApplication.instance(), theme)
+    page = AxisPage(config, fake_worker)
+    window.add_page("軸控", None, page)
+    window.resize(1600, 900)
+    qtbot.wait(50)
+    panel = page.points_panel
+
+    names = [box.text() for box in panel.axis_checks.values()]
+    assert names == [config.axes[n].name for n in sorted(config.axes)]
+    for box in panel.axis_checks.values():
+        assert box.isVisible()
+        assert box.width() >= box.sizeHint().width(), box.text()
+
+    table = panel.table
+    lift_col = DESC_COL - 1
+    right = table.columnViewportPosition(lift_col) + table.columnWidth(lift_col)
+    assert table.horizontalScrollBar().value() == 0
+    assert right <= table.viewport().width()
 
 
 def test_title_is_traditional_chinese(window):

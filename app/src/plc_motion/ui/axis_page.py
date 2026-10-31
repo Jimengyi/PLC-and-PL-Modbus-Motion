@@ -1,7 +1,8 @@
 """軸控頁（spec FR-28 ~ FR-33、FR-16 反灰、FR-27 UI 面）。
 
 上半部：七軸總覽（FR-28、FR-29）｜選定軸區塊（FR-30）＋全軸操作區（FR-31）。
-下半部 `bottom_layout`：步進鍵盤 `JogPad`（FR-32）｜點位表面板 `PointsPanel`（FR-34 ~ FR-36）。
+下半部 `bottom_layout`：步進鍵盤 `JogPad`（FR-32）與其下方的點位操作區｜點位表 `PointsPanel`
+（FR-34 ~ FR-36）。
 
 命令一律呼叫 worker 的命令方法；畫面只依 `snapshot_ready` 更新。鎖定（`EngineStatus.locked`）或
 尚未取得狀態時所有寫入控制項反灰，唯一例外是按住中的 JOG 鍵：JOG 按下本身就會造成鎖定，
@@ -220,8 +221,13 @@ class AxisPage(QWidget):
         top.addWidget(overview, 3)
         top.addLayout(right, 2)
 
+        # 左欄：步進鍵盤＋點位操作區；右欄：點位表（佔滿剩餘寬度，讓七軸座標欄都看得到）
+        left = QVBoxLayout()
+        left.addWidget(self.jog_pad, 0)
+        left.addWidget(self.points_panel.take_ops_box(), 0)
+        left.addStretch(1)
         self.bottom_layout = QHBoxLayout()
-        self.bottom_layout.addWidget(self.jog_pad, 0, Qt.AlignmentFlag.AlignTop)
+        self.bottom_layout.addLayout(left, 0)
         self.bottom_layout.addWidget(self.points_panel, 1)
 
         layout = QVBoxLayout(self)
