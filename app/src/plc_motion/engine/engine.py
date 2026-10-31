@@ -14,15 +14,20 @@ from plc_motion.codec import decimals_for, to_raw
 from plc_motion.engine.events import (
     AxisResult,
     CommandRejected,
+    DisconnectedWhileMoving,
     EngineEvent,
+    JogResidualCleared,
     OperationFinished,
     OperationKind,
     OperationStarted,
+    ResidualDetected,
+    ResidualInfo,
     ResultKind,
 )
 from plc_motion.engine.handshake import CODE_HOME, CODE_MOVE, AxisHandshake
 from plc_motion.plc.port import PlcPort
 from plc_motion.plc.snapshot import AxisState, Snapshot
+from plc_motion.settings.io_points import Access
 from plc_motion.settings.loader import AppConfig
 
 LIFT_AXIS = 7  # 原點復歸時先做的軸（FR-23）
@@ -33,16 +38,74 @@ REASON_NOT_CONNECTED = "未連線"
 REASON_FIRST_POLL = "連線後第一次輪詢尚未完成"
 REASON_OPERATION = "操作進行中"
 REASON_ESTOP = "急停中（Emergency Stop 已觸發）"
+REASON_NO_ALARM = "不需復歸：沒有任何軸 Alarm"
+
+JOG_TAGS = {+1: "JOG Plus", -1: "JOG Minus"}
 
 Listener = Callable[[EngineEvent], None]
+
+
+class _ResetHandshake:
+    """單軸異常復歸（FR-25；規格書 2.4）：Reset Alarm 1 → 脈衝時間後 0 → 等 Alarm = 0 且 Ready = 1。
+
+    脈衝以 tick 計時：寫 1 之後第一次已過脈衝時間的 tick 寫 0，實際脈衝介於設定值與
+    設定值＋一個輪詢週期之間。等待逾時從寫 0 起算；不重試。
+    """
+
+    def __init__(
+        self,
+        axis: int,
+        port: PlcPort,
+        clock: Callable[[], float],
+        pulse_s: float,
+        timeout_s: float,
+    ):
+        self.axis = axis
+        self._port = port
+        self._clock = clock
+        self._pulse_s = pulse_s
+        self._timeout_s = timeout_s
+        self._tag = f"Reset Alarm {axis}"
+        self._pulsing = False
+        self._since = 0.0
+        self.result: AxisResult | None = None
+
+    def start(self) -> None:
+        self._port.write(self._tag, True)
+        self._pulsing = True
+        self._since = self._clock()
+
+    def abort(self, result: AxisResult) -> None:
+        if self.result is None:
+            self.result = result
+
+    def advance(self, snapshot: Snapshot) -> AxisResult | None:
+        if self.result is not None:
+            return None
+        elapsed = self._clock() - self._since
+        if self._pulsing:
+            if elapsed >= self._pulse_s:
+                self._port.write(self._tag, False)
+                self._pulsing = False
+                self._since = self._clock()
+            return None  # 本輪快照早於寫 0，下一輪才判斷
+        st = snapshot.axis(self.axis)
+        if st.alarm_code == 0 and st.ready:
+            self.result = AxisResult(ResultKind.RESET_OK)
+        elif elapsed >= self._timeout_s:
+            self.result = AxisResult(ResultKind.RESET_FAIL)
+        return self.result
+
+
+Handshake = AxisHandshake | _ResetHandshake
 
 
 @dataclass
 class _Operation:
     kind: OperationKind
     axes: tuple[int, ...]
-    active: dict[int, AxisHandshake] = field(default_factory=dict)
-    pending: list[AxisHandshake] = field(default_factory=list)  # 第 7 軸完成後才開始
+    active: dict[int, Handshake] = field(default_factory=dict)
+    pending: list[Handshake] = field(default_factory=list)  # 第 7 軸完成後才開始
     results: dict[int, AxisResult] = field(default_factory=dict)
 
 
@@ -56,6 +119,8 @@ class MotionEngine:
         self._first_poll_done = False
         self._snapshot: Snapshot | None = None
         self._op: _Operation | None = None
+        self._jog_held: tuple[int, int] | None = None  # (軸號, 方向)
+        self._residual: list[ResidualInfo] = []
 
     # ---- 事件 ----
 
@@ -69,15 +134,31 @@ class MotionEngine:
     # ---- 連線與輪詢 ----
 
     def on_connected(self) -> None:
+        """殘留交握（FR-57）與 JOG 殘留（FR-58）在之後的第一次 tick 檢查。"""
         self._connected = True
         self._first_poll_done = False
         self._snapshot = None
+        self._residual = []
 
     def on_disconnected(self) -> None:
-        """進行中操作的未完成軸一律以「通訊中斷」結束，不補寫（無法寫入，改由 FR-57 處理）。"""
+        """進行中操作的未完成軸一律以「通訊中斷」結束，不補寫（無法寫入，改由 FR-57 處理）。
+
+        斷線前最後一次快照有軸 Busy = 1 或 JOG 按住中時，另發 `DisconnectedWhileMoving`。
+        """
+        moving = set()
+        if self._snapshot is not None:
+            moving = {n for n in self._config.axes if self._snapshot.axis(n).busy}
+        if self._jog_held is not None:
+            moving.add(self._jog_held[0])
         self._connected = False
         self._first_poll_done = False
         self._snapshot = None
+        self._jog_held = None  # PLC 端若仍為 1，重新連線後由 FR-58 寫 0
+        self._end_operation_comm_lost()
+        if moving:
+            self._emit(DisconnectedWhileMoving(tuple(sorted(moving))))
+
+    def _end_operation_comm_lost(self) -> None:
         op = self._op
         if op is None:
             return
@@ -93,9 +174,34 @@ class MotionEngine:
         if not self._connected:
             return
         self._snapshot = snapshot
-        self._first_poll_done = True
+        if not self._first_poll_done:
+            self._first_poll_done = True
+            self._check_after_connect(snapshot)
         if self._op is not None:
             self._advance(snapshot)
+
+    def _check_after_connect(self, snapshot: Snapshot) -> None:
+        """連線後第一次輪詢：JOG = 1 立即寫 0（FR-58）；殘留交握只偵測、不寫入（FR-57）。"""
+        residual = []
+        for n in sorted(self._config.axes):
+            st = snapshot.axis(n)
+            held = [f"{JOG_TAGS[d]} {n}" for d, on in ((+1, st.jog_plus), (-1, st.jog_minus)) if on]
+            for tag in held:
+                self._port.write(tag, False)
+            if held:
+                self._emit(JogResidualCleared(n, tuple(held)))
+            if st.request or st.pc_action_code != 0:
+                residual.append(
+                    ResidualInfo(
+                        axis=n,
+                        request=bool(st.request),
+                        pc_action_code=st.pc_action_code,
+                        target_position=snapshot.value(f"Target Position {n}"),
+                    )
+                )
+        self._residual = residual
+        if residual:
+            self._emit(ResidualDetected(tuple(residual)))
 
     def _advance(self, snapshot: Snapshot) -> None:
         op = self._op
@@ -132,7 +238,15 @@ class MotionEngine:
             return [REASON_NOT_CONNECTED]
         if not self._first_poll_done:
             return [REASON_FIRST_POLL]
-        return [REASON_OPERATION] if self._op is not None else []
+        reasons = []
+        if self._residual:
+            axes = "、".join(str(r.axis) for r in self._residual)
+            reasons.append(f"有殘留交握尚未處理（第 {axes} 軸）")
+        if self._op is not None:
+            reasons.append(REASON_OPERATION)
+        if self._jog_held is not None:
+            reasons.append(f"{self._label(self._jog_held[0])}：JOG 按住中")
+        return reasons
 
     def _busy_reasons(self, axes: Iterable[int]) -> list[str]:
         if self._snapshot is None:
@@ -185,6 +299,107 @@ class MotionEngine:
             pending=[handshakes[n] for n in order if n not in first],
         )
         return []
+
+    def servo_all(self, on: bool) -> list[str]:
+        """七軸 Servo Motor 同時寫 1／0（FR-24）；不屬於操作，不等結果。"""
+        command = "全部 Servo ON" if on else "全部 Servo OFF"
+        reasons = self.lock_reasons
+        if reasons:
+            return self._reject(command, reasons)
+        for n in sorted(self._config.axes):
+            self._port.write(f"Servo Motor {n}", bool(on))
+        return []
+
+    def reset_all(self) -> list[str]:
+        """只對 Alarm Code ≠ 0 的軸做異常復歸（FR-25），以操作回報逐軸復歸成功／失敗。"""
+        command = "全部 Reset Alarm"
+        reasons = self.lock_reasons
+        if reasons:
+            return self._reject(command, reasons)
+        order = [n for n in sorted(self._config.axes) if self._snapshot.axis(n).alarm_code != 0]
+        if not order:
+            return self._reject(command, [REASON_NO_ALARM])
+        device = self._config.device
+        handshakes = [
+            _ResetHandshake(
+                n,
+                self._port,
+                self._clock,
+                device.reset_alarm_pulse_ms / 1000,
+                device.handshake_timeout_s,
+            )
+            for n in order
+        ]
+        self._start_operation(OperationKind.RESET, order, {}, first=handshakes, pending=[])
+        return []
+
+    def jog_press(self, axis: int, direction: int, speed: int) -> list[str]:
+        """FR-26 條件全部通過後寫 Speed、再寫 JOG = 1；到 jog_release 之前為鎖定。"""
+        command = "JOG"
+        reasons = self._global_lock_reasons()
+        if axis not in self._config.axes:
+            reasons.append(f"第 {axis} 軸不存在")
+        if direction not in JOG_TAGS:
+            reasons.append(f"JOG 方向只能是 +1 或 -1：{direction}")
+        if reasons:
+            return self._reject(command, reasons)
+        snap = self._snapshot
+        if not snap.estop_ok:
+            reasons.append(REASON_ESTOP)
+        st = snap.axis(axis)
+        reasons += self._axis_reasons(axis, st, need_home=False)
+        if direction > 0 and st.pos_limit_triggered:
+            reasons.append(f"{self._label(axis)}：正極限已觸發")
+        if direction < 0 and st.neg_limit_triggered:
+            reasons.append(f"{self._label(axis)}：負極限已觸發")
+        reasons += self._busy_reasons(n for n in sorted(self._config.axes) if n != axis)
+        if reasons:
+            return self._reject(command, reasons)
+
+        speed = min(max(int(speed), SPEED_MIN), SPEED_MAX)
+        # 先記錄按住中再寫入：寫入途中通訊中斷時 on_disconnected 才看得到
+        self._jog_held = (axis, direction)
+        self._port.write(f"Speed {axis}", speed)
+        self._port.write(f"{JOG_TAGS[direction]} {axis}", True)
+        return []
+
+    def jog_release(self, axis: int, direction: int) -> None:
+        """永遠執行（鎖定中也寫）：立即對該 JOG 點寫 0（FR-27）。
+
+        未連線時無法寫入，只解除按住狀態；PLC 端殘留的 1 由重新連線後的 FR-58 處理。
+        """
+        if self._jog_held == (axis, direction):
+            self._jog_held = None
+        if self._connected:
+            self._port.write(f"{JOG_TAGS[direction]} {axis}", False)
+
+    def write_point(self, tag: str, value: int | bool) -> list[str]:
+        """IO Monitor 的單點寫入；值的範圍檢查由畫面負責。"""
+        command = "IO 寫入"
+        reasons = self.lock_reasons
+        try:
+            point = self._config.points.get(tag)
+        except KeyError:
+            reasons.append(f"{tag}：點位不存在")
+        else:
+            if point.access != Access.READ_WRITE:
+                reasons.append(f"{tag}：Read Only 點不可寫入")
+        if reasons:
+            return self._reject(command, reasons)
+        self._port.write(tag, value)
+        return []
+
+    # ---- 殘留交握（FR-57） ----
+
+    def residual_axes(self) -> list[ResidualInfo]:
+        return list(self._residual)
+
+    def clear_residual(self) -> None:
+        """對殘留軸寫 Request = 0、PC Action Code = 0，全部寫完才解除該鎖定條件。"""
+        for info in self._residual:
+            self._port.write(f"Request {info.axis}", False)
+            self._port.write(f"PC Action Code {info.axis}", 0)
+        self._residual = []
 
     def _move(
         self,
@@ -271,8 +486,8 @@ class MotionEngine:
         kind: OperationKind,
         axes: list[int],
         params: dict,
-        first: list[AxisHandshake],
-        pending: list[AxisHandshake],
+        first: list[Handshake],
+        pending: list[Handshake],
     ) -> None:
         # 先建立操作再寫入：寫入途中通訊中斷時 on_disconnected 才能結束這個操作
         self._op = _Operation(kind, tuple(axes), {hs.axis: hs for hs in first}, pending)

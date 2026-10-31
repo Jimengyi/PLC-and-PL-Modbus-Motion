@@ -10,6 +10,7 @@ class OperationKind(Enum):
     MOVE = "移動"
     STEP = "步進"
     HOME = "原點復歸"
+    RESET = "Reset Alarm"
 
 
 class ResultKind(Enum):
@@ -70,4 +71,42 @@ class Notice:
     text: str
 
 
-EngineEvent = OperationStarted | OperationFinished | CommandRejected | Notice
+@dataclass(frozen=True)
+class ResidualInfo:
+    """連線後第一次輪詢讀到的殘留交握（FR-57）。"""
+
+    axis: int
+    request: bool
+    pc_action_code: int
+    target_position: float  # 以倍率換算後的實際值
+
+
+@dataclass(frozen=True)
+class ResidualDetected:
+    axes: tuple[ResidualInfo, ...]  # 依軸號排序
+
+
+@dataclass(frozen=True)
+class JogResidualCleared:
+    """連線後第一次輪詢讀到 JOG = 1，已寫回 0（FR-58）。"""
+
+    axis: int
+    tags: tuple[str, ...]  # 寫回 0 的點（JOG Plus n／JOG Minus n）
+
+
+@dataclass(frozen=True)
+class DisconnectedWhileMoving:
+    """斷線前有軸 Busy = 1 或 JOG 按住中（FR-13）：軸可能仍在移動。"""
+
+    axes: tuple[int, ...]
+
+
+EngineEvent = (
+    OperationStarted
+    | OperationFinished
+    | CommandRejected
+    | Notice
+    | ResidualDetected
+    | JogResidualCleared
+    | DisconnectedWhileMoving
+)

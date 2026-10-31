@@ -4,11 +4,15 @@ from plc_motion.engine.engine import MotionEngine
 from plc_motion.engine.events import (
     AxisResult,
     CommandRejected,
+    DisconnectedWhileMoving,
     EngineEvent,
+    JogResidualCleared,
     Notice,
     OperationFinished,
     OperationKind,
     OperationStarted,
+    ResidualDetected,
+    ResidualInfo,
     ResultKind,
     WaitPoint,
 )
@@ -16,12 +20,16 @@ from plc_motion.engine.events import (
 __all__ = [
     "AxisResult",
     "CommandRejected",
+    "DisconnectedWhileMoving",
     "EngineEvent",
+    "JogResidualCleared",
     "MotionEngine",
     "Notice",
     "OperationFinished",
     "OperationKind",
     "OperationStarted",
+    "ResidualDetected",
+    "ResidualInfo",
     "ResultKind",
     "WaitPoint",
 ]
