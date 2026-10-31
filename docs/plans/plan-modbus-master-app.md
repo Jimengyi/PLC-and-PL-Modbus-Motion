@@ -670,7 +670,7 @@ Related: spec FR-13、FR-57、FR-58；Task 9 的 `ResidualDetected`、`JogResidu
 
 ---
 
-### Task 16: 模擬 PLC 視窗與 plc-sim 進入點 [ ]
+### Task 16: 模擬 PLC 視窗與 plc-sim 進入點 [x]
 
 Files:
 - Create: `app/src/plc_motion/sim/sim_window.py`
@@ -689,10 +689,10 @@ Related: spec FR-51、FR-53、FR-56
 測試 seam：pytest-qt 操作 `SimWindow`，斷言 `PlcModel` 狀態與 `SimServer` 行為
 
 驗收：（契約層）
-- [ ] FR-53 每一項操作在視窗上可用且生效（極限、原點感測器、急停、速度倍率、設定位置、注入 Alarm 含原因持續、兩種故障、中斷所有連線）
-- [ ] 紀錄區即時顯示寫入、連線、讀取統計、狀態變化，可匯出
-- [ ] `uv run plc-sim --port 5021` 啟動後可用 pymodbus client 連上
-- [ ] Run: `cd app && uv run pytest tests/sim/test_sim_window.py -v` → 全綠
+- [x] FR-53 每一項操作在視窗上可用且生效（極限、原點感測器、急停、速度倍率、設定位置、注入 Alarm 含原因持續、兩種故障、中斷所有連線）
+- [x] 紀錄區即時顯示寫入、連線、讀取統計、狀態變化，可匯出
+- [x] `uv run plc-sim --port 5021` 啟動後可用 pymodbus client 連上
+- [x] Run: `cd app && uv run pytest tests/sim/test_sim_window.py -v` → 全綠
 
 ---
 
