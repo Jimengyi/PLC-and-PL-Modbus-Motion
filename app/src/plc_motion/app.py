@@ -23,6 +23,7 @@ from plc_motion.settings import ConfigErrors, load_config, resolve_config_dir
 from plc_motion.settings.loader import AppConfig
 from plc_motion.ui.axis_page import AxisPage
 from plc_motion.ui.dialogs import ConfigErrorDialog, ExceptionReporter
+from plc_motion.ui.io_monitor import IoMonitorPage
 from plc_motion.ui.main_window import MainWindow
 from plc_motion.ui.single_instance import SingleInstance
 from plc_motion.ui.theme import apply_theme
@@ -53,6 +54,8 @@ class MotionApp(QObject):
         self.window = MainWindow(config, self.worker, f"{host}:{port}")
         self.axis_page = AxisPage(config, self.worker)
         self.window.add_page("軸控", None, self.axis_page)
+        self.io_page = IoMonitorPage(config, self.worker)
+        self.window.add_page("IO Monitor", None, self.io_page)
         self.tray = TrayController(sorted(config.axes))
         self.worker.snapshot_ready.connect(self._on_snapshot)
         self.worker.snapshot_ready.connect(self.tray.update)
