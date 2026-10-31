@@ -162,8 +162,15 @@ class PlcWorker(QObject):
             self._disconnect("重新連線")
         try:
             self._link.connect()
-        except PlcCommError as e:
-            log.warning("連線失敗：%s", e)
+        except Exception as e:
+            if isinstance(e, PlcCommError):
+                log.warning("連線失敗：%s", e)
+            else:
+                log.exception("連線時發生未預期的例外")
+            try:
+                self._link.close()
+            except Exception:
+                log.exception("關閉連線時發生例外")
             self.connection_changed.emit(False)
             return
         log.info("已連線到 PLC %s:%s", self._host, self._port)

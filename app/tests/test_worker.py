@@ -323,6 +323,30 @@ def test_unexpected_exception_is_logged_and_worker_can_reconnect(
     until(qtbot, lambda: probe.status.connected, timeout=3000)
 
 
+def test_unexpected_exception_during_connect_reports_disconnected(
+    qtbot, server, make_worker, monkeypatch, caplog_info
+):
+    original = ModbusLink.connect
+    raised = []
+
+    def connect(self):
+        if not raised:
+            raised.append(True)
+            raise OSError("測試用的連線例外")
+        return original(self)
+
+    monkeypatch.setattr(ModbusLink, "connect", connect)
+    _, worker, probe = make_worker(server=server)
+    until(qtbot, lambda: probe.connection == [False], timeout=3000)
+    records = [r for r in caplog_info.records if r.exc_info]
+    assert records
+    assert "測試用的連線例外" in str(records[0].exc_info[1])
+
+    worker.connect_plc()
+    wait_connected(qtbot, probe)
+    until(qtbot, lambda: probe.status.connected, timeout=3000)
+
+
 # ---- JOG 放開插隊（FR-27） ----
 
 
