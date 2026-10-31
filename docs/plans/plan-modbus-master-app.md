@@ -556,12 +556,13 @@ Related: spec FR-8（錯誤視窗）、FR-14、FR-41 ~ FR-47、FR-50；預覽 `.
 
 ---
 
-### Task 12: 軸控頁（總覽、選定軸、全軸操作、步進鍵盤、JOG） [ ]
+### Task 12: 軸控頁（總覽、選定軸、全軸操作、步進鍵盤、JOG） [x]
 
 Files:
 - Create: `app/src/plc_motion/ui/axis_page.py`
 - Create: `app/src/plc_motion/ui/jog_pad.py`
 - Modify: `app/src/plc_motion/app.py`（以 `add_page` 掛入軸控頁）
+- Modify: `app/src/plc_motion/ui/themes/dark.qss`、`app/src/plc_motion/ui/themes/light.qss`（新增軸控頁選擇器）
 - Test: `app/tests/ui/test_axis_page.py`、`app/tests/ui/test_jog_pad.py`
 
 Difficulty: 複雜
@@ -576,14 +577,14 @@ Related: spec FR-16、FR-27 ~ FR-33；預覽 `layout-v3-page.html`（主 repo �
 測試 seam：pytest-qt 操作 `AxisPage`／`JogPad`，以假的 worker（記錄被呼叫的 slot 與參數）與手動送入的 `snapshot_ready` 斷言
 
 驗收：（契約層）
-- [ ] 七軸總覽每列顯示 FR-28 的欄位；Alarm≠0 的列為異常色；點選一列更新選定軸區塊
-- [ ] 選定軸區塊顯示 FR-30 的 9 個燈號與 PLC Action Code、Alarm Code；全軸操作區顯示七軸 Find Home Finish 總覽（FR-31）
-- [ ] 勾選＋目標＋絕對/相對＋速度 → 呼叫 `move` 的參數正確；「勾選軸原點復歸」「單軸原點復歸」「全部原點復歸」呼叫 `home` 的軸組正確
-- [ ] 步進鍵按一次呼叫一次 `step`，delta＝所選長/中/短距離×方向；該軸 Find Home Finish=0 時鍵反灰；鍵旁顯示目前距離
-- [ ] JOG 按下呼叫 `jog_press`、放開呼叫 `jog_release`；按住中滑鼠在鍵外放開、視窗失焦、最小化、縮到系統匣都呼叫 `jog_release`
-- [ ] 方向極限觸發時對應 JOG 鍵反灰
-- [ ] `EngineStatus.locked` 為真時所有寫入控制項反灰（JOG 放開除外）
-- [ ] Run: `cd app && uv run pytest tests/ui/test_axis_page.py tests/ui/test_jog_pad.py -v` → 全綠
+- [x] 七軸總覽每列顯示 FR-28 的欄位；Alarm≠0 的列為異常色；點選一列更新選定軸區塊
+- [x] 選定軸區塊顯示 FR-30 的 9 個燈號與 PLC Action Code、Alarm Code；全軸操作區顯示七軸 Find Home Finish 總覽（FR-31）
+- [x] 勾選＋目標＋絕對/相對＋速度 → 呼叫 `move` 的參數正確；「勾選軸原點復歸」「單軸原點復歸」「全部原點復歸」呼叫 `home` 的軸組正確
+- [x] 步進鍵按一次呼叫一次 `step`，delta＝所選長/中/短距離×方向；該軸 Find Home Finish=0 時鍵反灰；鍵旁顯示目前距離
+- [x] JOG 按下呼叫 `jog_press`、放開呼叫 `jog_release`；按住中滑鼠在鍵外放開、視窗失焦、最小化、縮到系統匣都呼叫 `jog_release`
+- [x] 方向極限觸發時對應 JOG 鍵反灰
+- [x] `EngineStatus.locked` 為真時所有寫入控制項反灰（JOG 放開除外）
+- [x] Run: `cd app && uv run pytest tests/ui/test_axis_page.py tests/ui/test_jog_pad.py -v` → 全綠
 
 ---
 
