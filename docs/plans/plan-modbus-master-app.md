@@ -406,11 +406,12 @@ class MotionEngine:
 
 ---
 
-### Task 9: 交握引擎（Servo、Reset、JOG、IO 寫入、連線事件與殘留交握） [ ]
+### Task 9: 交握引擎（Servo、Reset、JOG、IO 寫入、連線事件與殘留交握） [x]
 
 Files:
 - Modify: `app/src/plc_motion/engine/engine.py`
 - Modify: `app/src/plc_motion/engine/events.py`
+- Modify: `app/src/plc_motion/engine/__init__.py`（匯出新事件）
 - Test: `app/tests/engine/test_servo_reset.py`、`app/tests/engine/test_jog.py`、`app/tests/engine/test_connection.py`
 
 Difficulty: 複雜
@@ -434,14 +435,14 @@ Related: spec FR-13、FR-15、FR-16、FR-24 ~ FR-27、FR-57、FR-58；規格書 
 測試 seam：同 Task 8（`MotionEngine` 公開方法＋事件，`ModelPort(PlcModel)` 扮演 PLC）
 
 驗收：（契約層）
-- [ ] `servo_all` 對七軸 Servo Motor 寫 1／0；引擎建立、`on_connected`、`on_disconnected` 都不寫 Servo
-- [ ] `reset_all`：只對 Alarm≠0 的軸寫 Reset Alarm 1，脈衝時間後寫 0，再於逾時內等 Alarm=0 且 Ready=1；以 `OperationStarted`／`OperationFinished` 回報，逐軸結果為「復歸成功」或「復歸失敗」；等待期間屬操作進行中而鎖定；不重試；無 Alarm 時以拒絕通道回傳「不需復歸」
-- [ ] `jog_press` 檢查 FR-26 全部條件（含 B 接點方向極限）後先寫 Speed 再寫 JOG=1；按住中 `locked` 為真；`jog_release` 在鎖定中也立即寫 0
-- [ ] `write_point`、`servo_all`、`reset_all` 鎖定時拒絕
-- [ ] 連線後第一次 tick 讀到 Request=1 或 PC Action Code≠0 → `ResidualDetected`、保持鎖定、除 FR-58 的 JOG 寫 0 外零寫入；`clear_residual` 寫回 0 後解除；已連線期間正常交握不觸發
-- [ ] 連線後第一次 tick 讀到 JOG=1 → 立即寫 0 並發 `JogResidualCleared`
-- [ ] `on_disconnected` 時，斷線前有軸 Busy 或 JOG 按住中 → `DisconnectedWhileMoving`
-- [ ] Run: `cd app && uv run pytest tests/engine/test_servo_reset.py tests/engine/test_jog.py tests/engine/test_connection.py -v` → 全綠
+- [x] `servo_all` 對七軸 Servo Motor 寫 1／0；引擎建立、`on_connected`、`on_disconnected` 都不寫 Servo
+- [x] `reset_all`：只對 Alarm≠0 的軸寫 Reset Alarm 1，脈衝時間後寫 0，再於逾時內等 Alarm=0 且 Ready=1；以 `OperationStarted`／`OperationFinished` 回報，逐軸結果為「復歸成功」或「復歸失敗」；等待期間屬操作進行中而鎖定；不重試；無 Alarm 時以拒絕通道回傳「不需復歸」
+- [x] `jog_press` 檢查 FR-26 全部條件（含 B 接點方向極限）後先寫 Speed 再寫 JOG=1；按住中 `locked` 為真；`jog_release` 在鎖定中也立即寫 0
+- [x] `write_point`、`servo_all`、`reset_all` 鎖定時拒絕
+- [x] 連線後第一次 tick 讀到 Request=1 或 PC Action Code≠0 → `ResidualDetected`、保持鎖定、除 FR-58 的 JOG 寫 0 外零寫入；`clear_residual` 寫回 0 後解除；已連線期間正常交握不觸發
+- [x] 連線後第一次 tick 讀到 JOG=1 → 立即寫 0 並發 `JogResidualCleared`
+- [x] `on_disconnected` 時，斷線前有軸 Busy 或 JOG 按住中 → `DisconnectedWhileMoving`
+- [x] Run: `cd app && uv run pytest tests/engine/test_servo_reset.py tests/engine/test_jog.py tests/engine/test_connection.py -v` → 全綠
 
 禁區：
 - 不修改 Task 8 已通過的行為（`tests/engine/test_move.py` 等需維持全綠）
