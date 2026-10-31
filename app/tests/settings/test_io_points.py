@@ -354,4 +354,5 @@ def test_save_check_status_failure_mid_write_keeps_original(config_dir, monkeypa
         "axes.toml",
         "device.toml",
         "io_points.csv",
+        "positions.csv",
     ]

@@ -126,6 +126,7 @@ def test_save_theme_failure_mid_write_keeps_original(config_dir, monkeypatch):
         "axes.toml",
         "device.toml",
         "io_points.csv",
+        "positions.csv",
     ]
 
 
