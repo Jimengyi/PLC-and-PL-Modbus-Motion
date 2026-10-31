@@ -21,6 +21,7 @@ from plc_motion.logging_setup import close_logging, setup_logging
 from plc_motion.plc.snapshot import Snapshot
 from plc_motion.settings import ConfigErrors, load_config, resolve_config_dir
 from plc_motion.settings.loader import AppConfig
+from plc_motion.ui.axis_page import AxisPage
 from plc_motion.ui.dialogs import ConfigErrorDialog, ExceptionReporter
 from plc_motion.ui.main_window import MainWindow
 from plc_motion.ui.single_instance import SingleInstance
@@ -50,6 +51,8 @@ class MotionApp(QObject):
         self.thread, self.worker = start_worker(config, host, port)
         # start_worker 的自動連線排在事件迴圈：以下接線都在回到事件迴圈之前完成
         self.window = MainWindow(config, self.worker, f"{host}:{port}")
+        self.axis_page = AxisPage(config, self.worker)
+        self.window.add_page("軸控", None, self.axis_page)
         self.tray = TrayController(sorted(config.axes))
         self.worker.snapshot_ready.connect(self._on_snapshot)
         self.worker.snapshot_ready.connect(self.tray.update)

@@ -244,3 +244,43 @@ QDialog QLabel#heading {
 
 QDialog QLabel#heading[state="fault"] { color: #d70015; }
 QDialog QLabel#heading[state="ok"] { color: #1f9d3a; }
+
+/* ---- 軸控頁 ---- */
+
+QLabel#lamp { background: transparent; color: #8e8e93; }
+QLabel#lamp[state="ok"] { color: #1f9d3a; }
+QLabel#lamp[state="busy"] { color: #0071e3; }
+QLabel#lamp[state="fault"] { color: #d70015; }
+QLabel#lamp[state="off"] { color: #8e8e93; }
+
+QFrame#axisRow {
+    background-color: #ffffff;
+    border: 1px solid #ffffff;
+    border-radius: 6px;
+}
+
+QFrame#axisRow[state="fault"] { background-color: #ffd6d3; border-color: #ffd6d3; }
+QFrame#axisRow[selected="true"] { border: 2px solid #0071e3; }
+
+QFrame#axisRow QLabel, QFrame#axisRow QCheckBox, QFrame#axisHeader, QFrame#axisHeader QLabel {
+    background: transparent;
+}
+
+QLabel#columnTitle, QLabel#hint, QLabel#stepDistance { color: #6e6e73; background: transparent; }
+QLabel#axisName, QLabel#selectedTitle { font-weight: 600; background: transparent; }
+QLabel#selectedTitle { font-size: 12pt; }
+QLabel#value { font-family: "Consolas", "Microsoft JhengHei UI", monospace; background: transparent; }
+QLabel#lockHint { color: #b25000; background: transparent; }
+
+QPushButton#segment { padding: 4px 12px; }
+QPushButton#segment:checked { background-color: #0071e3; border-color: #0071e3; color: #ffffff; }
+
+QFrame#axisRow QCheckBox::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid #6e6e73;
+    border-radius: 3px;
+    background-color: #ffffff;
+}
+
+QFrame#axisRow QCheckBox::indicator:checked { background-color: #0071e3; border-color: #0071e3; }
