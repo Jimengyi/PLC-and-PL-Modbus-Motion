@@ -181,7 +181,7 @@ class PositionTable:
 
 ---
 
-### Task 4: 預設設定檔 [ ]
+### Task 4: 預設設定檔 [x]
 
 Files:
 - Create: `app/config/device.toml`
@@ -195,12 +195,12 @@ Depends on: Task 3
 Related: spec FR-55、FR-2、FR-3；`docs/七軸_Modbus位址表.md`；使用者參考檔 `C:\Users\jimze\Desktop\Project\勝品\Project\Settings\Modbus Master\IO_Data_Settings_01.conf`（Tab 分隔、UTF-8，只讀不改）
 
 驗收：（契約層）
-- [ ] `load_config(app/config)` 成功
-- [ ] 7 軸 × 18 個必要 Tag ＋ `Emergency Stop` 皆在，位址與位址表逐一相符；倍率 X/Y/Z `10000,mm`、RX/RY/RZ `100,deg`、升降 `100,mm`
-- [ ] `JOG Plus n`、`JOG Minus n`、`Request n` 的 Visible 為 X，其餘為 O；Check Status 全為 Unchecked；Unit ID 全為 0（同參考檔）
-- [ ] `device.toml`：192.168.1.105、502、連線逾時 2000、其餘為 FR-2 預設值；每個鍵上方有繁中註解
-- [ ] `axes.toml` 名稱依序 X、Y、Z、RX、RY、RZ、升降；軟體極限與步進距離有「待依機構行程確認」註解
-- [ ] Run: `cd app && uv run pytest tests/settings/test_default_config.py -v` → 全綠
+- [x] `load_config(app/config)` 成功
+- [x] 7 軸 × 18 個必要 Tag ＋ `Emergency Stop` 皆在，位址與位址表逐一相符；倍率 X/Y/Z `10000,mm`、RX/RY/RZ `100,deg`、升降 `100,mm`
+- [x] `JOG Plus n`、`JOG Minus n`、`Request n` 的 Visible 為 X，其餘為 O；Check Status 全為 Unchecked；Unit ID 全為 0（同參考檔）
+- [x] `device.toml`：192.168.1.105、502、連線逾時 2000、其餘為 FR-2 預設值；每個鍵上方有繁中註解
+- [x] `axes.toml` 名稱依序 X、Y、Z、RX、RY、RZ、升降；軟體極限與步進距離有「待依機構行程確認」註解
+- [x] Run: `cd app && uv run pytest tests/settings/test_default_config.py -v` → 全綠
 
 禁區：
 - 不修改使用者的 LabVIEW 參考檔
