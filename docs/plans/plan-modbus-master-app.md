@@ -779,11 +779,12 @@ Related: `docs/specs/spec-modbus-master-app.md` Acceptance Criteria（觀測點�
 
 ---
 
-### Task 19: 端到端驗收（點位表、IO Monitor、主視窗、日誌、打包）與實機前截圖檢查 [ ]
+### Task 19: 端到端驗收（點位表、IO Monitor、主視窗、日誌、打包）與實機前截圖檢查 [x]
 
 Files:
 - Create: `app/tests/e2e/test_e2e_points_io.py`
 - Create: `app/tests/e2e/test_e2e_window.py`
+- Modify: `app/src/plc_motion/ui/points_panel.py`、`app/src/plc_motion/ui/axis_page.py`（截圖檢查發現的點位表版面修正）
 
 Difficulty: 複雜
 Depends on: Task 17、Task 18
@@ -792,26 +793,26 @@ Related: spec Acceptance Criteria
 測試 seam：同 Task 18；需要變更設定檔的 AC（AC-2 ~ AC-5、AC-29、AC-32）一律以 `--config` 指向 tmp 資料夾的複本，不修改 repo 的 `app/config`；AC-33 以兩個真實程序驗證；AC-36 使用 Task 17 的打包產物（`-m slow`）
 
 驗收：（契約層，逐字抄 spec）
-- [ ] AC-2：分別製造 FR-8 的每一種錯誤（每次一種；型態表逐欄至少各一例，含把 `Positive Limit 1` 的 `ON` 拿掉）啟動，程式顯示列出該錯誤的視窗後結束，結束碼非 0；同時製造兩種錯誤時兩者都被列出。
-- [ ] AC-3：以 Big5 編碼存成的 `io_points.csv`（Display Name 含中文）啟動，畫面中文正確；程式寫回 Check Status 後，檔案為 UTF-8 含 BOM，再以 Excel 預設方式開啟中文正確。
-- [ ] AC-4：刪除 `positions.csv` 後啟動，檔案被建立，含 P001 ~ P200 共 200 列。
-- [ ] AC-5：在 `io_points.csv` 新增一個非軸的 Tag（如 `Cylinder1 Up`，Coil、Read Write），模擬器同樣讀這份檔；它出現在 IO Monitor 右欄，雙擊後模擬器狀態對應位址變為 1。
-- [ ] AC-25：選 P004，按存入目前位置：`positions.csv` 的 P004 列立即更新為七軸目前位置。勾選 X、Y、Z 按移動到此點：只有 X、Y、Z 移動，目標為 P004 的值。
-- [ ] AC-26：匯出後修改匯出檔再匯入：確認後點位表整份換成匯入內容並存檔；取消確認則不變。
-- [ ] AC-38：匯入只有 150 列、或某座標為文字的檔案：顯示原因，點位表與 `positions.csv` 皆不變。
-- [ ] AC-27：JOG Plus、JOG Minus、Request（Visible = X）不出現在 IO Monitor；B 接點的點名稱帶「(B)」。
-- [ ] AC-28：雙擊 `Speed 1` 輸入 70，模擬器 D123 變為 70；輸入 150 被拒。雙擊 Servo Motor 1 切換後模擬器值改變。移動中雙擊不產生寫入。
-- [ ] AC-29：右鍵把某點設為 NG：該列變為 NG 的顏色、數量統計更新、`io_points.csv` 對應列的 Check Status 立即為 NG；重新啟動後仍為 NG。
-- [ ] AC-30：按最小化或右上角關閉，視窗消失、系統匣圖示存在、模擬器端仍持續收到輪詢；雙擊圖示叫回。系統匣選單「結束」在軸移動中先跳確認。
-- [ ] AC-31：縮在系統匣時注入 Alarm，出現 Windows 通知、圖示變為異常顏色。
-- [ ] AC-32：切換為淺色主題後重新啟動，仍為淺色；`device.toml` 的主題值已變更，其餘內容（含註解）不變。
-- [ ] AC-33：已執行一份時再次啟動，不出現第二個主視窗，原本的主視窗被叫到前景。
-- [ ] AC-34：通訊進行中（含交握等待期間）拖動視窗、切換頁面，畫面不凍結。
-- [ ] AC-35：完成 AC-8、AC-12 後，當日日誌檔含兩次操作的參數與逐軸結果，以及 Alarm 變化；把一個超過保留天數的舊日誌放進 `logs` 後重新啟動，該檔被刪除。
-- [ ] AC-36：打包輸出的資料夾複製到另一個路徑，執行其中的 exe（不透過 uv、不需安裝 Python）以 `--host 127.0.0.1 --port 5020` 連上 `plc-sim`，AC-1 成立；資料夾內有授權聲明檔、Qt DLL 為獨立檔案、沒有 `plc-sim`。
-- [ ] 實際啟動 `uv run plc-sim` 與 `uv run plc-motion --host 127.0.0.1 --port 5020`，深色與淺色各截一張軸控頁與 IO Monitor 頁的圖存到主 repo 的 `C:\Users\jimze\Desktop\Project\AI Project\PLC-and-PL-Modbus-Motion\.craft\modbus-master-app\screenshots\`（絕對路徑，worktree 清除後仍保留），版面結構符合 FR-28 ~ FR-41
-- [ ] Run: `cd app && uv run pytest tests/e2e/test_e2e_points_io.py tests/e2e/test_e2e_window.py -v` → 全綠；`cd app && uv run pytest -m slow -v` → 全綠
-- [ ] Run: `cd app && uv run pytest -q` → 收集到的測試數大於 0 且全綠
+- [x] AC-2：分別製造 FR-8 的每一種錯誤（每次一種；型態表逐欄至少各一例，含把 `Positive Limit 1` 的 `ON` 拿掉）啟動，程式顯示列出該錯誤的視窗後結束，結束碼非 0；同時製造兩種錯誤時兩者都被列出。
+- [x] AC-3：以 Big5 編碼存成的 `io_points.csv`（Display Name 含中文）啟動，畫面中文正確；程式寫回 Check Status 後，檔案為 UTF-8 含 BOM，再以 Excel 預設方式開啟中文正確。
+- [x] AC-4：刪除 `positions.csv` 後啟動，檔案被建立，含 P001 ~ P200 共 200 列。
+- [x] AC-5：在 `io_points.csv` 新增一個非軸的 Tag（如 `Cylinder1 Up`，Coil、Read Write），模擬器同樣讀這份檔；它出現在 IO Monitor 右欄，雙擊後模擬器狀態對應位址變為 1。
+- [x] AC-25：選 P004，按存入目前位置：`positions.csv` 的 P004 列立即更新為七軸目前位置。勾選 X、Y、Z 按移動到此點：只有 X、Y、Z 移動，目標為 P004 的值。
+- [x] AC-26：匯出後修改匯出檔再匯入：確認後點位表整份換成匯入內容並存檔；取消確認則不變。
+- [x] AC-38：匯入只有 150 列、或某座標為文字的檔案：顯示原因，點位表與 `positions.csv` 皆不變。
+- [x] AC-27：JOG Plus、JOG Minus、Request（Visible = X）不出現在 IO Monitor；B 接點的點名稱帶「(B)」。
+- [x] AC-28：雙擊 `Speed 1` 輸入 70，模擬器 D123 變為 70；輸入 150 被拒。雙擊 Servo Motor 1 切換後模擬器值改變。移動中雙擊不產生寫入。
+- [x] AC-29：右鍵把某點設為 NG：該列變為 NG 的顏色、數量統計更新、`io_points.csv` 對應列的 Check Status 立即為 NG；重新啟動後仍為 NG。
+- [x] AC-30：按最小化或右上角關閉，視窗消失、系統匣圖示存在、模擬器端仍持續收到輪詢；雙擊圖示叫回。系統匣選單「結束」在軸移動中先跳確認。
+- [x] AC-31：縮在系統匣時注入 Alarm，出現 Windows 通知、圖示變為異常顏色。
+- [x] AC-32：切換為淺色主題後重新啟動，仍為淺色；`device.toml` 的主題值已變更，其餘內容（含註解）不變。
+- [x] AC-33：已執行一份時再次啟動，不出現第二個主視窗，原本的主視窗被叫到前景。
+- [x] AC-34：通訊進行中（含交握等待期間）拖動視窗、切換頁面，畫面不凍結。
+- [x] AC-35：完成 AC-8、AC-12 後，當日日誌檔含兩次操作的參數與逐軸結果，以及 Alarm 變化；把一個超過保留天數的舊日誌放進 `logs` 後重新啟動，該檔被刪除。
+- [x] AC-36：打包輸出的資料夾複製到另一個路徑，執行其中的 exe（不透過 uv、不需安裝 Python）以 `--host 127.0.0.1 --port 5020` 連上 `plc-sim`，AC-1 成立；資料夾內有授權聲明檔、Qt DLL 為獨立檔案、沒有 `plc-sim`。
+- [x] 實際啟動 `uv run plc-sim` 與 `uv run plc-motion --host 127.0.0.1 --port 5020`，深色與淺色各截一張軸控頁與 IO Monitor 頁的圖存到主 repo 的 `C:\Users\jimze\Desktop\Project\AI Project\PLC-and-PL-Modbus-Motion\.craft\modbus-master-app\screenshots\`（絕對路徑，worktree 清除後仍保留），版面結構符合 FR-28 ~ FR-41
+- [x] Run: `cd app && uv run pytest tests/e2e/test_e2e_points_io.py tests/e2e/test_e2e_window.py -v` → 全綠；`cd app && uv run pytest -m slow -v` → 全綠
+- [x] Run: `cd app && uv run pytest -q` → 收集到的測試數大於 0 且全綠
 
 留給實作：
 - AC-31 的 Windows 通知與 AC-33 的前景判定在自動化測試中的觀測方式（例如攔截 `QSystemTrayIcon.showMessage` 呼叫、檢查視窗 `isActiveWindow`）；邊界：必須在真實執行的程式上觀測，不可只測呼叫端假物件
