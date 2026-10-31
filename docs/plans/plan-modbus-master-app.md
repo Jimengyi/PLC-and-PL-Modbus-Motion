@@ -17,7 +17,7 @@ Architecture: 所有程式碼在 `app/`（uv 專案，套件 `plc_motion`，src 
 
 Verification: `cd app && uv run pytest -q && uv run ruff check . && uv run ruff format --check .`
 
-Base branch:
+Base branch: main @ c3aa3a1
 
 ## Spec coverage
 

@@ -12,3 +12,4 @@ dist/
 
 # craft 設計預覽與審查暫存
 .craft/
+.worktrees/
