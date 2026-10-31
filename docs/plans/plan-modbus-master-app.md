@@ -79,7 +79,7 @@ def decimals_for(scale: int) -> int: ...             # 10000 → 4、100 → 2
 
 ---
 
-### Task 2: 設定載入與啟動檢查（device、axes、io_points） [ ]
+### Task 2: 設定載入與啟動檢查（device、axes、io_points） [x]
 
 Files:
 - Create: `app/src/plc_motion/settings/__init__.py`
@@ -130,13 +130,13 @@ class DeviceSettings:
 測試 seam：`load_config()` 的回傳值或 `ConfigErrors.errors`；寫回函式以檔案位元組為斷言對象
 
 驗收：（契約層）
-- [ ] FR-8 每一種錯誤各一個案例都產生對應訊息；型態表的 Data Model、Sensor Type、Access、Address Length、Attributes 各至少一例；`Positive Limit 1` 缺 `ON` 被擋；同時兩種錯誤時兩條都在 `errors` 中
-- [ ] Big5 編碼、UTF-8 無 BOM、UTF-8 含 BOM 三種 `io_points.csv` 皆可載入且 Display Name 中文正確
-- [ ] `save_check_status` 之後檔案為 UTF-8 含 BOM，只有該列 Check Status 改變，其餘位元組（除 BOM 與該欄外）與列順序不變
-- [ ] `save_theme` 之後 `device.toml` 只有主題值改變，註解與其他內容逐字保留
-- [ ] 寫回採原子替換：模擬寫入途中例外時原檔內容不變
-- [ ] `tests/conftest.py` 的 `config_dir` fixture 產生的資料夾可被 `load_config` 載入（七軸、全部必要 Tag、Unit ID 0）
-- [ ] Run: `cd app && uv run pytest tests/settings -v` → 全綠
+- [x] FR-8 每一種錯誤各一個案例都產生對應訊息；型態表的 Data Model、Sensor Type、Access、Address Length、Attributes 各至少一例；`Positive Limit 1` 缺 `ON` 被擋；同時兩種錯誤時兩條都在 `errors` 中
+- [x] Big5 編碼、UTF-8 無 BOM、UTF-8 含 BOM 三種 `io_points.csv` 皆可載入且 Display Name 中文正確
+- [x] `save_check_status` 之後檔案為 UTF-8 含 BOM；原檔為 UTF-8 時只有該列 Check Status 改變，其餘位元組（除 BOM 與該欄外）與列順序不變；原檔為 Big5 時重新載入後內容與列順序不變
+- [x] `save_theme` 之後 `device.toml` 只有主題值改變，註解與其他內容逐字保留
+- [x] 寫回採原子替換：模擬寫入途中例外時原檔內容不變
+- [x] `tests/conftest.py` 的 `config_dir` fixture 產生的資料夾可被 `load_config` 載入（七軸、全部必要 Tag、Unit ID 0）
+- [x] Run: `cd app && uv run pytest tests/settings -v` → 全綠
 
 禁區：
 - 不讀、不解析 `docs/` 下的 md 檔；FR-8 型態表寫成程式內的常數表
