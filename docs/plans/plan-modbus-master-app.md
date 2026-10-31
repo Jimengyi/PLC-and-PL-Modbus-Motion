@@ -273,7 +273,7 @@ class ModelPort(PlcPort):
 
 ---
 
-### Task 6: 模擬 PLC 伺服器與紀錄 [ ]
+### Task 6: 模擬 PLC 伺服器與紀錄 [x]
 
 Files:
 - Create: `app/src/plc_motion/sim/__init__.py`
@@ -289,7 +289,7 @@ Related: spec FR-51、FR-53（中斷所有連線）、FR-56；pymodbus 3.16 serv
 
 ```python
 class SimLog:
-    def entries(self) -> list[LogEntry]: ...     # kind: "write" | "connect" | "disconnect" | "read" | "state"
+    def entries(self) -> list[LogEntry]: ...     # kind: "write" | "connect" | "disconnect" | "state"（"read" 不逐筆入列，只出現在匯出摘要）
     def last_read_time(self) -> float | None: ...
     def read_count(self) -> int: ...
     def export(self, path: Path) -> None: ...
@@ -303,15 +303,17 @@ class SimServer:
     log: SimLog
 ```
 
+已落地的額外公開介面：`SimServer.model`、`points`、`port`（傳 0 時 `start()` 後為實際埠號）、`lock`（RLock，直接存取 model 時須持有）、`forced_tag`；`LogEntry(time, kind, tag, value, text)` 與 `format()`。
+
 測試 seam：以 pymodbus `ModbusTcpClient` 直接連 `SimServer` 讀寫，斷言回應值與 `SimLog` 內容
 
 驗收：（契約層）
-- [ ] io_points 定義的每個點（依 Data Model 與 Unit ID）可讀；Read Write 點可寫，寫入轉成 `model.master_write` 並記入 log（毫秒時間、Tag Name、值）；Position 點兩個 Word 寫入後組成正確 I32
-- [ ] 連線、斷線、讀取次數與最近讀取時間、FR-56 列出的狀態變化（含 PLC Action Code）皆有紀錄，可匯出文字檔
-- [ ] `disconnect_all()` 後既有 client 斷線、model 狀態不變、新 client 可再連
-- [ ] 讀寫 io_points 未定義的位址回 Modbus 例外（Illegal Data Address）；提供測試用手段 `SimServer.force_exception(tag: str | None)` 讓指定點的讀寫回例外（None 解除）
-- [ ] Unit ID 0 的點可正常讀寫
-- [ ] Run: `cd app && uv run pytest tests/sim/test_server.py -v` → 全綠
+- [x] io_points 定義的每個點（依 Data Model 與 Unit ID）可讀；Read Write 點可寫，寫入轉成 `model.master_write` 並記入 log（毫秒時間、Tag Name、值）；Position 點兩個 Word 寫入後組成正確 I32
+- [x] 連線、斷線、讀取次數與最近讀取時間、FR-56 列出的狀態變化（含 PLC Action Code）皆有紀錄，可匯出文字檔
+- [x] `disconnect_all()` 後既有 client 斷線、model 狀態不變、新 client 可再連
+- [x] 讀寫 io_points 未定義的位址回 Modbus 例外（Illegal Data Address）；提供測試用手段 `SimServer.force_exception(tag: str | None)` 讓指定點的讀寫回例外（None 解除）
+- [x] Unit ID 0 的點可正常讀寫
+- [x] Run: `cd app && uv run pytest tests/sim/test_server.py -v` → 全綠
 
 ---
 
