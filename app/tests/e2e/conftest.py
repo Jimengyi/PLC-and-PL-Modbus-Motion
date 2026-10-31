@@ -19,8 +19,8 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QObject, QPoint, Qt, Slot
-from PySide6.QtWidgets import QWidget
+from PySide6.QtCore import QObject, QPoint, Qt, QTimer, Slot
+from PySide6.QtWidgets import QApplication, QTableWidget, QWidget
 
 from plc_motion.app import MotionApp
 from plc_motion.engine import CommandRejected, OperationFinished
@@ -133,6 +133,12 @@ class Harness:
         for app in apps:
             app.shutdown()
             app.window.deleteLater()
+
+    def restart(self) -> MotionApp:
+        """結束目前的程式，從同一個設定資料夾重新載入設定後再啟動（同程序內模擬重新啟動）。"""
+        self.close_all()
+        self.config = load_config(self.config.config_dir)
+        return self.start()
 
     def _sample(self, snapshot, status) -> None:
         self.samples.append(
@@ -278,6 +284,50 @@ class Harness:
         if self.app.io_page._can_write():
             names.add("IO 寫入")
         return frozenset(names)
+
+    def show_io(self, tag: str) -> tuple[QTableWidget, int]:
+        """切到 IO Monitor 頁、該點所在分頁，回傳 (表格, 列)。"""
+        window, page = self.app.window, self.app.io_page
+        self.click(window.nav.buttons[window.pages.indexOf(page)])
+        page.show_kind(page.kind_of(tag))
+        table, row = page.locate(tag)
+        table.scrollToItem(table.item(row, 0))
+        return table, row
+
+    def click_cell(self, table: QTableWidget, row: int, col: int, double: bool = False) -> None:
+        """在表格的一格上點一下；double 時接著雙擊（pytest-qt 的雙擊前要先單擊）。"""
+        table.scrollToItem(table.item(row, col))
+        pos = table.visualItemRect(table.item(row, col)).center()
+        self.qtbot.mouseClick(table.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+        if double:
+            self.qtbot.mouseDClick(table.viewport(), Qt.MouseButton.LeftButton, pos=pos)
+
+    def answer_modal(
+        self, kind: type, handler: Callable, timeout_ms: int = 10000, popup: bool = False
+    ) -> list:
+        """之後出現 `kind` 型別的 modal 視窗（popup 時為彈出選單）時呼叫 handler(視窗)，
+        回傳收到的視窗清單。
+
+        以 QTimer 輪詢（modal 視窗與選單的 exec() 會跑巢狀事件迴圈，計時器照樣觸發）；
+        時限內沒出現就停止輪詢，預期不開視窗的測試據此斷言清單為空。
+        """
+        seen: list = []
+        deadline = time.monotonic() + timeout_ms / 1000
+
+        def poll() -> None:
+            if popup:
+                widget = QApplication.activePopupWidget()
+            else:
+                widget = QApplication.activeModalWidget()
+            if isinstance(widget, kind) and widget not in seen:
+                seen.append(widget)
+                handler(widget)
+                return
+            if time.monotonic() < deadline:
+                QTimer.singleShot(20, poll)
+
+        QTimer.singleShot(0, poll)
+        return seen
 
     def messages(self) -> list[str]:
         return [m.detail for m in self.app.window.messages]
