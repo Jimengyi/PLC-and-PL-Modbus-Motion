@@ -452,7 +452,7 @@ Related: spec FR-13、FR-15、FR-16、FR-24 ~ FR-27、FR-57、FR-58；規格書 
 
 ---
 
-### Task 10: 背景通訊 worker 與日誌 [ ]
+### Task 10: 背景通訊 worker 與日誌 [x]
 
 Files:
 - Create: `app/src/plc_motion/worker.py`
@@ -468,7 +468,7 @@ Related: spec FR-10 ~ FR-14、FR-27、FR-48 ~ FR-50；`docs/design/design-modbus
 ```python
 class PlcWorker(QObject):
     # signals（跨執行緒，queued）
-    snapshot_ready = Signal(object, object)   # (Snapshot, EngineStatus)
+    snapshot_ready = Signal(object, object)   # (Snapshot | None, EngineStatus)；未連線時為 None；每輪輪詢、每個命令後、斷線時發出
     engine_event = Signal(object)              # EngineEvent
     connection_changed = Signal(bool)
     # 命令方法：UI 唯一入口，可從 UI 執行緒直接呼叫；方法內部一律以 queued 方式轉派到 worker 執行緒執行
@@ -490,19 +490,19 @@ def start_worker(config: AppConfig, host: str, port: int) -> tuple[QThread, PlcW
 def setup_logging(logs_dir: Path, keep_days: int) -> None: ...
 ```
 
-`EngineStatus` 帶 `locked`、`lock_reasons`、`connected`、是否有操作進行中、殘留清單。
+`EngineStatus` 帶 `locked`、`lock_reasons`、`connected`、`operating`（worker 依 OperationStarted／OperationFinished 追蹤）、`residual`。
 
 測試 seam：`PlcWorker` 的 signal 與 slot（pytest-qt `qtbot.waitSignal`），PLC 端為 Task 6 的 `SimServer`（真 TCP）
 
 驗收：（契約層）
-- [ ] 從 UI 執行緒呼叫任一命令方法時，實際的 Modbus 寫入與 `MotionEngine` 呼叫發生在 worker 執行緒（以記錄執行緒 id 的測試驗證）
-- [ ] 啟動即自動連線；先在 SimServer 未啟動時啟動 worker（`connection_changed(False)`），再啟動 SimServer、等待數個輪詢週期，連線紀錄為零；呼叫 `connect_plc` 後才出現連線
-- [ ] 輪詢週期依 `device.toml`；SimServer 停止後一個輪詢週期內 `connection_changed(False)` 且日誌有斷線紀錄
-- [ ] `jog_release` 從呼叫到 SimServer 寫入紀錄出現 JOG=0 不超過 100 ms（即使正在等待下一輪）
-- [ ] `--host`/`--port` 覆寫由 `start_worker` 參數傳入，不寫回 `device.toml`
-- [ ] 背景執行緒內未預期例外 → 日誌記錄、視同通訊中斷、worker 仍可再 `connect_plc`
-- [ ] 日誌每日一檔於 `logs`；FR-49 列出的事件皆寫入，另含殘留交握偵測與寫回 0（FR-57）、JOG 殘留寫 0（FR-58）；超過保留天數的檔案在 `setup_logging` 時刪除（以檔名日期判斷）
-- [ ] Run: `cd app && uv run pytest tests/test_worker.py tests/test_logging.py -v` → 全綠
+- [x] 從 UI 執行緒呼叫任一命令方法時，實際的 Modbus 寫入與 `MotionEngine` 呼叫發生在 worker 執行緒（以記錄執行緒 id 的測試驗證）
+- [x] 啟動即自動連線；先在 SimServer 未啟動時啟動 worker（`connection_changed(False)`），再啟動 SimServer、等待數個輪詢週期，連線紀錄為零；呼叫 `connect_plc` 後才出現連線
+- [x] 輪詢週期依 `device.toml`；SimServer 停止後一個輪詢週期內 `connection_changed(False)` 且日誌有斷線紀錄
+- [x] `jog_release` 從呼叫到 SimServer 寫入紀錄出現 JOG=0 不超過 100 ms（即使正在等待下一輪）
+- [x] `--host`/`--port` 覆寫由 `start_worker` 參數傳入，不寫回 `device.toml`
+- [x] 背景執行緒內未預期例外 → 日誌記錄、視同通訊中斷、worker 仍可再 `connect_plc`
+- [x] 日誌每日一檔於 `logs`；FR-49 列出的事件皆寫入，另含殘留交握偵測與寫回 0（FR-57）、JOG 殘留寫 0（FR-58）；超過保留天數的檔案在 `setup_logging` 時刪除（以檔名日期判斷）
+- [x] Run: `cd app && uv run pytest tests/test_worker.py tests/test_logging.py -v` → 全綠
 
 禁區：
 - Modbus I/O 與 `MotionEngine` 呼叫只能在 worker 執行緒
