@@ -58,6 +58,10 @@ def test_license_notices_cover_bundled_packages(dist: Path):
         assert needle in text
     assert (dist / "licenses").is_dir()
     assert any((dist / "licenses").iterdir())
+    lgpl = (dist / "licenses" / "LGPL-3.0.txt").read_text("utf-8")
+    assert "GNU LESSER GENERAL PUBLIC LICENSE" in lgpl
+    gpl = (dist / "licenses" / "GPL-3.0.txt").read_text("utf-8")
+    assert "GNU GENERAL PUBLIC LICENSE" in gpl
 
 
 def test_simulator_is_not_packaged(dist: Path):

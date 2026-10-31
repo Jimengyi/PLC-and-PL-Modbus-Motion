@@ -5,7 +5,7 @@ plc-motion 打包版（`plc-motion.exe` 與 `_internal/`）內含下列第三方
 ## Qt 與 PySide6（LGPL v3）
 
 - 元件：PySide6、shiboken6（Qt for Python）與其附帶的 Qt 6 函式庫（Qt6Core.dll、Qt6Gui.dll、Qt6Widgets.dll、Qt6Network.dll 等）。
-- 授權：GNU LGPL v3（亦提供 GPL v3 與商業授權；本程式採用 LGPL v3）。全文：https://www.gnu.org/licenses/lgpl-3.0.html
+- 授權：GNU LGPL v3（亦提供 GPL v3 與商業授權；本程式採用 LGPL v3）。全文：`licenses/LGPL-3.0.txt`，其引用的 GPL v3 全文：`licenses/GPL-3.0.txt`。
 - 版權：The Qt Company Ltd. 及各貢獻者。
 - 原始碼：https://code.qt.io/ 、https://pypi.org/project/PySide6/
 - 本程式以動態連結方式使用 Qt。打包採用 onedir，Qt DLL 與 PySide6 的 `.pyd` 為 `_internal/PySide6/` 下的獨立檔案，使用者可自行以修改過的相容版本取代。本程式未修改 Qt 或 PySide6 原始碼。

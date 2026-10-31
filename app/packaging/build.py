@@ -53,6 +53,9 @@ def main() -> None:
     for dist_name, filename in BUNDLED_LICENSES:
         _copy_license(dist_name, licenses / filename)
     shutil.copyfile(Path(sys.base_prefix) / "LICENSE.txt", licenses / "Python-LICENSE.txt")
+    # Qt 的 LGPL v3 第 4 節要求隨附 LGPL v3 與其引用的 GPL v3 全文
+    for name in ("LGPL-3.0.txt", "GPL-3.0.txt"):
+        shutil.copyfile(PACKAGING_DIR / name, licenses / name)
     print(f"完成：{OUT_DIR}")
 
 
