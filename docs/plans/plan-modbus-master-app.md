@@ -512,7 +512,7 @@ def setup_logging(logs_dir: Path, keep_days: int) -> None: ...
 
 ---
 
-### Task 11: 主視窗框架、主題、系統匣、單一實例、程式進入點 [ ]
+### Task 11: 主視窗框架、主題、系統匣、單一實例、程式進入點 [x]
 
 Files:
 - Create: `app/src/plc_motion/app.py`
@@ -535,19 +535,20 @@ Related: spec FR-8（錯誤視窗）、FR-14、FR-41 ~ FR-47、FR-50；預覽 `.
 - 命令列：`plc-motion [--host HOST] [--port PORT] [--config DIR]`；`--config` 預設為 `resolve_config_dir()`，`logs` 位於該資料夾的同層（開發與測試用，現場不需指定）
 - `MainWindow` 公開：`nav`（可收合）、`toolbar` 上的連線狀態與「重新連線」、主題切換、急停狀態、「全部 Servo ON」「全部 Servo OFF」「全部 Reset Alarm」；`status_bar` 顯示輪詢週期與最近訊息；`add_page(name, icon, widget)` 逐頁掛入（Task 12、14 各自呼叫）
 - 鎖定時工具列的寫入按鈕反灰（依 `EngineStatus.locked`）
+- 已落地：`MainWindow(config, worker, endpoint="")`；`app.py` 的 `MotionApp(config, host, port)` 組裝 worker、主視窗與系統匣（提供 `.window`、`.tray`、`.worker`、`.thread`），供 Task 18 重用
 
 測試 seam：pytest-qt 操作 `MainWindow` 與 `TrayController`；進入點以 subprocess 執行 `uv run plc-motion --config <tmp 設定資料夾>` 觀察結束碼與視窗（不得修改 repo 的 `app/config`）
 
 驗收：（契約層）
-- [ ] 設定錯誤時顯示列出全部錯誤的視窗，關閉後結束碼非 0；同時寫入日誌（位置為所用設定資料夾——`--config` 指定者或預設的 `resolve_config_dir()`——同層的 `logs`，保留天數用預設 30）
-- [ ] 收到 `CommandRejected` 時顯示全部拒絕原因；收到 `OperationFinished` 時顯示逐軸結果（含復歸成功／失敗、未執行）；兩者都進狀態列最近訊息並可檢視完整內容
-- [ ] 最小化與關閉鈕都縮到系統匣、worker 繼續輪詢；系統匣選單「顯示主視窗／重新連線／結束」與雙擊叫回可用；「結束」在操作進行中或有軸 Busy 時先確認；結束不寫任何點
-- [ ] 系統匣圖示依「正常／動作中／Alarm 或急停／未連線」四態切換；Alarm 0→非 0、急停 1→0 時 `showMessage` 通知
-- [ ] 主題切換即時套用並存回 `device.toml`，重新啟動仍為該主題
-- [ ] 第二個 `plc-motion` 程序啟動時，第一個視窗被叫到前景，第二個結束
-- [ ] UI 執行緒未預期例外 → 日誌＋錯誤視窗，程式不結束
-- [ ] 最小尺寸 1600×900；左側導覽收合後內容區變寬
-- [ ] Run: `cd app && uv run pytest tests/ui/test_main_window.py tests/ui/test_tray.py tests/test_app_entry.py -v` → 全綠
+- [x] 設定錯誤時顯示列出全部錯誤的視窗，關閉後結束碼非 0；同時寫入日誌（位置為所用設定資料夾——`--config` 指定者或預設的 `resolve_config_dir()`——同層的 `logs`，保留天數用預設 30）
+- [x] 收到 `CommandRejected` 時顯示全部拒絕原因；收到 `OperationFinished` 時顯示逐軸結果（含復歸成功／失敗、未執行）；兩者都進狀態列最近訊息並可檢視完整內容
+- [x] 最小化與關閉鈕都縮到系統匣、worker 繼續輪詢；系統匣選單「顯示主視窗／重新連線／結束」與雙擊叫回可用；「結束」在操作進行中或有軸 Busy 時先確認；結束不寫任何點
+- [x] 系統匣圖示依「正常／動作中／Alarm 或急停／未連線」四態切換；Alarm 0→非 0、急停 1→0 時 `showMessage` 通知
+- [x] 主題切換即時套用並存回 `device.toml`，重新啟動仍為該主題
+- [x] 第二個 `plc-motion` 程序啟動時，第一個視窗被叫到前景，第二個結束
+- [x] UI 執行緒未預期例外 → 日誌＋錯誤視窗，程式不結束
+- [x] 最小尺寸 1600×900；左側導覽收合後內容區變寬
+- [x] Run: `cd app && uv run pytest tests/ui/test_main_window.py tests/ui/test_tray.py tests/test_app_entry.py -v` → 全綠
 
 留給實作：
 - 顏色、圖示、間距與字型；邊界：深淺兩主題下 Check Status 五種狀態與「正常／動作中／異常／未連線」可互相區分
