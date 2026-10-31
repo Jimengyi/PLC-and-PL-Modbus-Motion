@@ -42,9 +42,9 @@ related: []
 - [x] smoke test（匯入、Qt 視窗、系統匣可用）實際跑過
 - [x] `.gitignore` 加 Python 項目
 - [x] CLAUDE.md 更新專案性質與指令
-- [ ] PyInstaller 打包腳本與授權聲明檔（功能完成後，轉入 plan）
+- [x] PyInstaller 打包腳本與授權聲明檔（`app/packaging/`，`uv run python packaging/build.py`）
 
 ## 未解問題
 
-- `pyside6` 套件會連帶裝入 WebEngine、Addons 等大型模組，打包體積大。若設計確定只用 QtWidgets，可改成只依賴 `pyside6-essentials`；若要用 QtCharts 畫趨勢圖則需保留 Addons。設計階段決定。
+- 已解決：依賴改為 `pyside6-essentials`（程式只用 QtCore／Gui／Widgets／Network，不用 QtCharts）。打包產物由 121 MB 降到 101 MB，全套測試仍綠。
 - uv 曾出現一次 TLS `invalid peer certificate: UnknownIssuer`，重試後成功；若再發生，可加 `--system-certs`。

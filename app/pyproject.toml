@@ -9,7 +9,7 @@ authors = [
 requires-python = ">=3.14"
 dependencies = [
     "pymodbus>=3.16.1",
-    "pyside6>=6.12.0",
+    "pyside6-essentials>=6.12.0",
 ]
 
 [project.scripts]
@@ -30,6 +30,8 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = ["slow: 耗時測試（PyInstaller 打包），預設跳過，以 -m slow 執行"]
+addopts = "-m 'not slow'"
 
 [tool.ruff]
 line-length = 100
