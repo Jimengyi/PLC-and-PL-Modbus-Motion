@@ -317,7 +317,7 @@ class SimServer:
 
 ---
 
-### Task 7: Modbus 連線 adapter [ ]
+### Task 7: Modbus 連線 adapter [x]
 
 Files:
 - Create: `app/src/plc_motion/plc/modbus_link.py`
@@ -342,11 +342,11 @@ class ModbusLink(PlcPort):
 測試 seam：`ModbusLink` 對 Task 6 的 `SimServer`（真 TCP、localhost）讀寫；分組邏輯另以純函式測
 
 驗收：（契約層）
-- [ ] `read_all()` 讀到 io_points 全部點（含 Visible = X），值與 `PlcModel.read` 一致；讀取請求次數少於點數（有合併）
-- [ ] 不讀取 io_points 沒定義的位址（SimServer 對表外位址回例外，`read_all` 不得因此失敗）
-- [ ] 寫 Position 點時低位 Word 在前；寫 −1000000 後 server 端兩個 Word 為 48576、65520
-- [ ] server 停止、讀寫逾時、Modbus 例外回應（以 `SimServer.force_exception` 製造）時 raise `PlcCommError`，例外回應的訊息含 Tag Name 與位址
-- [ ] Run: `cd app && uv run pytest tests/plc/test_modbus_link.py tests/plc/test_batching.py -v` → 全綠
+- [x] `read_all()` 讀到 io_points 全部點（含 Visible = X），值與 `PlcModel.read` 一致；讀取請求次數少於點數（有合併）
+- [x] 不讀取 io_points 沒定義的位址（SimServer 對表外位址回例外，`read_all` 不得因此失敗）
+- [x] 寫 Position 點時低位 Word 在前；寫 −1000000 後 server 端兩個 Word 為 48576、65520
+- [x] server 停止、讀寫逾時、Modbus 例外回應（以 `SimServer.force_exception` 製造）時 raise `PlcCommError`，例外回應的訊息含 Tag Name 與位址
+- [x] Run: `cd app && uv run pytest tests/plc/test_modbus_link.py tests/plc/test_batching.py -v` → 全綠
 
 留給實作：
 - 批次分組方式；邊界：每輪讀到全部點，且不讀表外位址
