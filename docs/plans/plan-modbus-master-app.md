@@ -645,11 +645,12 @@ Related: spec FR-37 ~ FR-40；Task 2 的 `IoPointTable.save_check_status`
 
 ---
 
-### Task 15: 殘留交握視窗與連線相關提示 [ ]
+### Task 15: 殘留交握視窗與連線相關提示 [x]
 
 Files:
 - Create: `app/src/plc_motion/ui/residual_dialog.py`
 - Modify: `app/src/plc_motion/ui/main_window.py`（工具列重新開啟入口、提示顯示）
+- Modify: `app/src/plc_motion/ui/themes/dark.qss`、`app/src/plc_motion/ui/themes/light.qss`（警告文字樣式）
 - Test: `app/tests/ui/test_residual_dialog.py`
 
 Difficulty: 簡單
@@ -663,9 +664,9 @@ Related: spec FR-13、FR-57、FR-58；Task 9 的 `ResidualDetected`、`JogResidu
 測試 seam：pytest-qt 送入事件，斷言視窗內容與假 worker 呼叫
 
 驗收：（契約層）
-- [ ] 三種事件的畫面文字與 FR 一致
-- [ ] 選「先不處理」不呼叫任何 worker 寫入；從工具列重開後選「寫回 0」才呼叫 `clear_residual`
-- [ ] Run: `cd app && uv run pytest tests/ui/test_residual_dialog.py -v` → 全綠
+- [x] 三種事件的畫面文字與 FR 一致
+- [x] 選「先不處理」不呼叫任何 worker 寫入；從工具列重開後選「寫回 0」才呼叫 `clear_residual`
+- [x] Run: `cd app && uv run pytest tests/ui/test_residual_dialog.py -v` → 全綠
 
 ---
 
