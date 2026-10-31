@@ -26,7 +26,11 @@ def to_raw(value: float, scale: int) -> int:
     if not math.isfinite(value):
         raise ValueError(f"不是有限數值：{value}")
     # 經由 repr 轉 Decimal，避免 float 二進位誤差造成 ±1
-    raw = int((Decimal(repr(float(value))) * scale).quantize(Decimal(1), rounding=ROUND_HALF_UP))
+    scaled = Decimal(repr(float(value))) * scale
+    # 先擋極大值：quantize 超過 Decimal 精度會丟 InvalidOperation 而非 ValueError
+    if abs(scaled) > 2**32:
+        raise ValueError(f"換算後超出 I32 範圍：{value} × {scale}")
+    raw = int(scaled.quantize(Decimal(1), rounding=ROUND_HALF_UP))
     if not I32_MIN <= raw <= I32_MAX:
         raise ValueError(f"換算後超出 I32 範圍：{value} × {scale}")
     return raw

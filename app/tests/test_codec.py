@@ -44,7 +44,7 @@ def test_to_raw_rounds_to_nearest():
     assert to_raw(-0.00006, 10000) == -1
 
 
-@pytest.mark.parametrize("value", [214749.3648, -214749.3649, 1e12])
+@pytest.mark.parametrize("value", [214749.3648, -214749.3649, 1e12, 1e300, -1e30])
 def test_to_raw_out_of_i32_range_raises(value):
     with pytest.raises(ValueError):
         to_raw(value, 10000)
