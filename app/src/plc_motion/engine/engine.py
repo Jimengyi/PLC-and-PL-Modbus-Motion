@@ -4,6 +4,17 @@
 呼叫端（PlcWorker）每輪 `port.read_all()` 後呼叫一次 `tick(snapshot)`；命令方法在兩次
 tick 之間呼叫，命令內的寫入要在下一次 read_all 之前完成，tick 收到的快照才反映這些寫入。
 PlcPort 寫入失敗的 PlcCommError 不在此攔截，由呼叫端視為通訊中斷並呼叫 `on_disconnected()`。
+
+名詞：
+    操作（_Operation）：一次「移動／步進／原點復歸／Reset Alarm」命令，可能包含多軸；
+        同一時間最多只有一個操作，進行中時其他命令一律拒絕（全域動作鎖）。
+    交握（Handshake）：操作裡每一軸各一個狀態機物件（AxisHandshake 或 _ResetHandshake），
+        由 tick 逐軸呼叫 advance() 推進；沒有額外的執行緒。
+
+命令方法（move、home、jog_press…）的共同模式：
+    1. 前置檢查，收集所有不通過的原因
+    2. 有原因：發 CommandRejected 事件並回傳原因清單，不寫任何點
+    3. 全部通過：寫入命令（或建立操作），回傳空清單
 """
 
 from collections.abc import Callable, Iterable, Mapping
@@ -31,17 +42,19 @@ from plc_motion.settings.io_points import Access
 from plc_motion.settings.loader import AppConfig
 
 LIFT_AXIS = 7  # 原點復歸時先做的軸（FR-23）
-SPEED_MIN = 1
+SPEED_MIN = 1  # 速度範圍（%）：超出時自動夾到範圍內，不拒絕
 SPEED_MAX = 100
 
+# 拒絕原因的固定文字；會顯示在畫面與日誌
 REASON_NOT_CONNECTED = "未連線"
 REASON_FIRST_POLL = "連線後第一次輪詢尚未完成"
 REASON_OPERATION = "操作進行中"
 REASON_ESTOP = "急停中（Emergency Stop 已觸發）"
 REASON_NO_ALARM = "不需復歸：沒有任何軸 Alarm"
 
-JOG_TAGS = {+1: "JOG Plus", -1: "JOG Minus"}
+JOG_TAGS = {+1: "JOG Plus", -1: "JOG Minus"}  # JOG 方向 → 點位名稱（不含軸號）
 
+# 事件接收函式；PlcWorker 註冊一個，收到後轉成 Qt signal 送給 UI
 Listener = Callable[[EngineEvent], None]
 
 
@@ -50,6 +63,10 @@ class _ResetHandshake:
 
     脈衝以 tick 計時：寫 1 之後第一次已過脈衝時間的 tick 寫 0，實際脈衝介於設定值與
     設定值＋一個輪詢週期之間。等待逾時從寫 0 起算；不重試。
+
+    介面與 AxisHandshake 相同（start／advance／abort／axis／result），
+    所以 MotionEngine 可以用同一套流程推進兩種交握。
+    狀態只有兩段，以 `_pulsing` 區分：True 為脈衝中（Reset Alarm = 1），False 為等待 PLC 復歸。
     """
 
     def __init__(
@@ -57,8 +74,8 @@ class _ResetHandshake:
         axis: int,
         port: PlcPort,
         clock: Callable[[], float],
-        pulse_s: float,
-        timeout_s: float,
+        pulse_s: float,  # 脈衝寬度（秒），來自 device.toml 的 reset_alarm_pulse_ms
+        timeout_s: float,  # 寫 0 之後等 PLC 復歸的逾時（秒）
     ):
         self.axis = axis
         self._port = port
@@ -67,7 +84,7 @@ class _ResetHandshake:
         self._timeout_s = timeout_s
         self._tag = f"Reset Alarm {axis}"
         self._pulsing = False
-        self._since = 0.0
+        self._since = 0.0  # 脈衝中：寫 1 的時間；等待中：寫 0 的時間
         self.result: AxisResult | None = None
 
     def start(self) -> None:
@@ -76,6 +93,7 @@ class _ResetHandshake:
         self._since = self._clock()
 
     def abort(self, result: AxisResult) -> None:
+        """通訊中斷用：不寫入，直接記下結果。"""
         if self.result is None:
             self.result = result
 
@@ -84,11 +102,13 @@ class _ResetHandshake:
             return None
         elapsed = self._clock() - self._since
         if self._pulsing:
+            # 第一段：脈衝時間到才寫 0，並把計時改成從寫 0 起算
             if elapsed >= self._pulse_s:
                 self._port.write(self._tag, False)
                 self._pulsing = False
                 self._since = self._clock()
             return None  # 本輪快照早於寫 0，下一輪才判斷
+        # 第二段：等 PLC 清掉 Alarm 並回到 Ready；逾時就判定復歸失敗
         st = snapshot.axis(self.axis)
         if st.alarm_code == 0 and st.ready:
             self.result = AxisResult(ResultKind.RESET_OK)
@@ -97,16 +117,18 @@ class _ResetHandshake:
         return self.result
 
 
-Handshake = AxisHandshake | _ResetHandshake
+Handshake = AxisHandshake | _ResetHandshake  # 兩種交握共用的型別名稱
 
 
 @dataclass
 class _Operation:
-    kind: OperationKind
-    axes: tuple[int, ...]
-    active: dict[int, Handshake] = field(default_factory=dict)
+    """進行中的一次操作；所有軸都有結果後由 _finish_operation 結束並清掉。"""
+
+    kind: OperationKind  # 移動／步進／原點復歸／Reset Alarm
+    axes: tuple[int, ...]  # 這次操作包含的全部軸
+    active: dict[int, Handshake] = field(default_factory=dict)  # 已 start() 的交握，key 為軸號
     pending: list[Handshake] = field(default_factory=list)  # 第 7 軸完成後才開始
-    results: dict[int, AxisResult] = field(default_factory=dict)
+    results: dict[int, AxisResult] = field(default_factory=dict)  # 已結束的軸與結果
 
 
 class MotionEngine:
@@ -116,11 +138,12 @@ class MotionEngine:
         self._clock = clock
         self._listeners: list[Listener] = []
         self._connected = False
+        # 連線後第一次 tick 是否已執行；未執行前鎖定所有命令，因為還沒有快照可做前置檢查
         self._first_poll_done = False
-        self._snapshot: Snapshot | None = None
-        self._op: _Operation | None = None
+        self._snapshot: Snapshot | None = None  # 最近一次 tick 的快照，命令的前置檢查用它
+        self._op: _Operation | None = None  # 進行中的操作；None 表示沒有
         self._jog_held: tuple[int, int] | None = None  # (軸號, 方向)
-        self._residual: list[ResidualInfo] = []
+        self._residual: list[ResidualInfo] = []  # 連線時偵測到、尚未處理的殘留交握
 
     # ---- 事件 ----
 
@@ -165,12 +188,14 @@ class MotionEngine:
         lost = AxisResult(ResultKind.COMM_LOST)
         for hs in op.active.values():
             hs.abort(lost)
+        # setdefault：已經有結果的軸保留原結果，其餘（含還在 pending 的軸）記為通訊中斷
         for n in op.axes:
             op.results.setdefault(n, lost)
         op.pending = []
         self._finish_operation()
 
     def tick(self, snapshot: Snapshot) -> None:
+        """每輪輪詢呼叫一次：存下快照，連線後第一輪做殘留檢查，再推進進行中的操作。"""
         if not self._connected:
             return
         self._snapshot = snapshot
@@ -185,11 +210,14 @@ class MotionEngine:
         residual = []
         for n in sorted(self._config.axes):
             st = snapshot.axis(n)
+            # JOG 點仍為 1：可能是上次斷線時按住中，軸會一直動，所以不詢問直接寫 0
             held = [f"{JOG_TAGS[d]} {n}" for d, on in ((+1, st.jog_plus), (-1, st.jog_minus)) if on]
             for tag in held:
                 self._port.write(tag, False)
             if held:
                 self._emit(JogResidualCleared(n, tuple(held)))
+            # Request 或 PC Action Code 不是 0：上次交握沒收完。只記錄並鎖定，
+            # 由使用者在畫面上確認後呼叫 clear_residual() 歸零
             if st.request or st.pc_action_code != 0:
                 residual.append(
                     ResidualInfo(
@@ -204,13 +232,22 @@ class MotionEngine:
             self._emit(ResidualDetected(tuple(residual)))
 
     def _advance(self, snapshot: Snapshot) -> None:
+        """推進進行中的操作，分三步：
+
+        1. 逐軸推進：對還沒有結果的軸呼叫 advance()，有結果就記下
+        2. 處理 pending（只有多軸原點復歸會有）：先做的第 7 軸結束後，
+           成功就讓其餘軸開始，失敗則其餘軸記為「未執行」
+        3. 所有軸都有結果：結束操作並發出 OperationFinished
+        """
         op = self._op
+        # 1. 逐軸推進（相當於 LabVIEW 用 For Loop 跑過每軸的狀態機一次）
         for n, hs in op.active.items():
             if n not in op.results:
                 result = hs.advance(snapshot)
                 if result is not None:
                     op.results[n] = result
 
+        # 2. 有 pending 時，active 裡只有第 7 軸；它有結果後才決定 pending 的去向
         if op.pending and all(n in op.results for n in op.active):
             if all(r.kind == ResultKind.DONE for r in op.results.values()):
                 # 第 7 軸完成：其餘軸同時開始；本輪快照早於這些寫入，下一輪才推進
@@ -222,10 +259,12 @@ class MotionEngine:
                     op.results[hs.axis] = AxisResult(ResultKind.NOT_RUN)
             op.pending = []
 
+        # 3. 全部軸都有結果才結束；任一軸還在跑，整個操作就還在進行中（維持全域鎖）
         if not op.pending and len(op.results) == len(op.axes):
             self._finish_operation()
 
     def _finish_operation(self) -> None:
+        """清掉進行中的操作（解除全域鎖），並把各軸結果依軸號排序後發出。"""
         op = self._op
         self._op = None
         results = MappingProxyType({n: op.results[n] for n in sorted(op.results)})
@@ -234,6 +273,10 @@ class MotionEngine:
     # ---- 鎖定 ----
 
     def _global_lock_reasons(self) -> list[str]:
+        """與軸狀態無關、會擋下所有命令的條件（全域動作鎖）。
+
+        未連線、第一輪未完成時直接回傳：此時沒有快照，後面的檢查無從判斷。
+        """
         if not self._connected:
             return [REASON_NOT_CONNECTED]
         if not self._first_poll_done:
@@ -249,6 +292,11 @@ class MotionEngine:
         return reasons
 
     def _busy_reasons(self, axes: Iterable[int]) -> list[str]:
+        """列出指定軸中 Busy = 1 的軸。
+
+        命令方法傳入「命令以外的軸」：任何一軸還在動時都不下新命令。
+        命令本身的軸由 _axis_reasons 檢查 Busy，所以不重複列。
+        """
         if self._snapshot is None:
             return []
         return [
@@ -257,6 +305,7 @@ class MotionEngine:
 
     @property
     def lock_reasons(self) -> list[str]:
+        """目前的鎖定原因；PlcWorker 放進 EngineStatus 給畫面顯示與停用按鈕。"""
         return self._global_lock_reasons() + self._busy_reasons(sorted(self._config.axes))
 
     @property
@@ -265,13 +314,18 @@ class MotionEngine:
 
     # ---- 命令 ----
 
+    # 以下命令方法都回傳拒絕原因清單：空清單表示已接受
+
     def move(self, targets: dict[int, float], relative: bool, speed: int) -> list[str]:
+        """多軸移動；targets 為 {軸號: 位置}，relative=True 時為相對目前位置的位移量。"""
         return self._move("移動", OperationKind.MOVE, targets, relative, speed)
 
     def step(self, axis: int, delta: float, speed: int) -> list[str]:
+        """單軸步進：等同對一個軸做相對移動。"""
         return self._move("步進", OperationKind.STEP, {axis: delta}, True, speed)
 
     def home(self, axes: set[int]) -> list[str]:
+        """原點復歸（Code 1）。多軸時第 7 軸（升降軸）先做，成功後其餘軸再一起做。"""
         command = "原點復歸"
         order = sorted(set(axes))
         reasons = self._common_reasons(order)
@@ -279,6 +333,7 @@ class MotionEngine:
             return self._reject(command, reasons)
         snap = self._snapshot
         for n in order:
+            # 原點復歸本身不需要 Find Home Finish = 1
             reasons += self._axis_reasons(n, snap.axis(n), need_home=False)
         reasons += self._busy_reasons(n for n in sorted(self._config.axes) if n not in order)
         if reasons:
@@ -290,6 +345,8 @@ class MotionEngine:
             )
             for n in order
         }
+        # 包含第 7 軸且不只一軸：先只啟動第 7 軸，其餘放進 pending（由 _advance 接手）；
+        # 否則全部同時啟動
         first = [LIFT_AXIS] if LIFT_AXIS in handshakes and len(order) > 1 else order
         self._start_operation(
             OperationKind.HOME,
@@ -409,18 +466,22 @@ class MotionEngine:
         relative: bool,
         speed: int,
     ) -> list[str]:
+        """move 與 step 共用：前置檢查 → 換算絕對目標 → 每軸建一個 Code 2 交握並同時啟動。"""
         order = sorted(targets)
+        # 全域條件不通過就不再逐軸檢查（例如未連線時沒有快照可查）
         reasons = self._common_reasons(order)
         if reasons:
             return self._reject(command, reasons)
         snap = self._snapshot
-        absolute: dict[int, float] = {}
+        absolute: dict[int, float] = {}  # 各軸的絕對目標（實際單位 mm／deg）
         for n in order:
             st = snap.axis(n)
+            # 逐軸檢查會累加所有不通過的項目，讓使用者一次看到全部原因
             reasons += self._axis_reasons(n, st, need_home=True)
+            # 相對移動以目前位置換算成絕對目標：PLC 只支援 Code 2 絕對移動
             target = st.position + targets[n] if relative else float(targets[n])
             absolute[n] = target
-            limit = self._config.axes[n]
+            limit = self._config.axes[n]  # axes.toml 的軟體極限
             if not limit.soft_limit_min <= target <= limit.soft_limit_max:
                 reasons.append(
                     f"{self._label(n)}：目標 {self._fmt(n, target)} 超出軟體極限 "
@@ -439,11 +500,12 @@ class MotionEngine:
                 self._port,
                 self._clock,
                 timeout,
-                target_raw=to_raw(absolute[n], self._scale(n)),
+                target_raw=to_raw(absolute[n], self._scale(n)),  # 乘上該軸倍率轉成整數
                 speed=speed,
             )
             for n in order
         ]
+        # 放進 OperationStarted 事件，畫面與日誌用來顯示這次命令的內容
         params = {
             "input": dict(targets),
             "relative": relative,
@@ -466,6 +528,7 @@ class MotionEngine:
         return []
 
     def _axis_reasons(self, n: int, st: AxisState, need_home: bool) -> list[str]:
+        """單軸能不能下命令；need_home=True 時另要求已原點復歸（移動、步進用）。"""
         items = []
         if not st.ready:
             items.append("Ready = 0（未就緒）")
@@ -478,6 +541,7 @@ class MotionEngine:
         return [f"{self._label(n)}：{item}" for item in items]
 
     def _reject(self, command: str, reasons: list[str]) -> list[str]:
+        """發出拒絕事件（畫面顯示原因）並回傳原因清單。"""
         self._emit(CommandRejected(command, tuple(reasons)))
         return reasons
 
@@ -489,6 +553,7 @@ class MotionEngine:
         first: list[Handshake],
         pending: list[Handshake],
     ) -> None:
+        """建立操作並啟動 first 裡的交握；pending 的交握等 _advance 決定何時啟動。"""
         # 先建立操作再寫入：寫入途中通訊中斷時 on_disconnected 才能結束這個操作
         self._op = _Operation(kind, tuple(axes), {hs.axis: hs for hs in first}, pending)
         self._emit(OperationStarted(kind, tuple(axes), MappingProxyType(params)))
