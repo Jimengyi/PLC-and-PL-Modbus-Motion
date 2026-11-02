@@ -34,6 +34,7 @@ from plc_motion.ui import confirm_dialog
 from plc_motion.ui.confirm_dialog import ConfirmRow
 from plc_motion.ui.jog_pad import lock_tooltip
 from plc_motion.ui.point_edit_dialog import AXIS_FIELDS, PointEditDialog
+from plc_motion.ui.row_hover import enable_row_hover
 from plc_motion.ui.theme import color
 from plc_motion.ui.widgets import Panel, SpeedStepper, hint, named_button
 from plc_motion.worker import EngineStatus
@@ -74,6 +75,7 @@ class PointsPanel(Panel):
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setColumnHidden(DESC_COL, True)
+        self.row_hover = enable_row_hover(self.table, bar_column=0)
         header = self.table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         for col, width in ((0, 52), (NAME_COL, 72)):

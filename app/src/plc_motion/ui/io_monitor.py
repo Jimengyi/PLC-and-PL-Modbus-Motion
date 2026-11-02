@@ -34,6 +34,7 @@ from plc_motion.plc.snapshot import Snapshot
 from plc_motion.settings.io_points import Access, CheckStatus, DataModel, IoPoint, SensorType
 from plc_motion.settings.loader import AppConfig
 from plc_motion.ui.jog_pad import format_value, lock_tooltip, segment_button
+from plc_motion.ui.row_hover import enable_row_hover
 from plc_motion.ui.theme import color
 from plc_motion.ui.value_dialog import ValueDialog
 from plc_motion.ui.widgets import Panel
@@ -156,6 +157,8 @@ class IoMonitorPage(QWidget):
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # 邊條畫在狀態色條右邊的名稱格，不蓋住色條
+        enable_row_hover(table, bar_column=NAME_COL)
         header = table.horizontalHeader()
         header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(NAME_COL, QHeaderView.ResizeMode.Stretch)

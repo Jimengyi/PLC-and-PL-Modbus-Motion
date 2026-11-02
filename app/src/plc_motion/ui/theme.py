@@ -25,9 +25,12 @@ COLORS = {
     "border": "#3a4048",
     "border_strong": "#4b525c",
     "text": "#e6e8eb",
+    "white": "#ffffff",  # 選取列文字
     "text_dim": "#8b939e",
     "accent": "#2f9bff",  # 選取、主要按鈕
     "accent_dim": "#173a5c",  # 選取底色
+    "hover": "#232930",  # 表格滑鼠停留列底色
+    "hover_selected": "#1d4a75",  # 已選取列滑鼠停留時的底色
     "ok": "#3ccf63",
     "busy": "#2f9bff",
     "warn": "#f2b21b",
