@@ -4,6 +4,9 @@ pymodbus 的 asyncio server 與 `model.step()` 的固定週期掃描跑在同一
 所有對 `PlcModel` 的存取（Modbus 請求、step、視窗操作）都要持有 `SimServer.lock`，
 因為 PlcModel 本身沒有鎖。點位只提供 io_points.csv 定義者，依 (Unit ID, Data Model, 位址) 對應；
 Position 點占兩個 Word，低位在前。
+
+讀取 io_points 沒定義的位址回 Illegal Data Address；但有 read_ranges.toml 時（spec FR-62），
+範圍內的空號位址讀到 0，模擬實機 PLC 的元件本來就存在。寫入空號位址一律回例外。
 """
 
 import asyncio
@@ -27,6 +30,7 @@ from plc_motion.settings.io_points import (
     IoPointTable,
     SensorType,
 )
+from plc_motion.settings.read_ranges import ReadRange
 from plc_motion.sim.sim_log import SimLog
 
 # model.step() 的掃描週期（秒）
@@ -56,37 +60,48 @@ class _Store:
         for p in sim.points.all():
             for i in range(p.length):
                 self._cells[(p.unit_id, p.data_model, p.start_address + i)] = _Cell(p, i)
-        self._unit_ids = sorted({p.unit_id for p in sim.points.all()})
+        # read_ranges.toml 範圍內的位址：io_points 沒定義也可以讀（讀到 0）
+        self._readable: set[tuple[int, DataModel, int]] = set()
+        for r in sim.read_ranges or ():
+            for a in range(r.start, r.end + 1):
+                self._readable.add((r.unit_id, r.data_model, a))
+        units = {p.unit_id for p in sim.points.all()} | {k[0] for k in self._readable}
+        self._unit_ids = sorted(units)
 
     def device_ids(self) -> list[int]:
         return list(self._unit_ids)
 
     def _lookup(
-        self, device_id: int, model: DataModel | None, address: int, count: int
-    ) -> list[_Cell] | ExcCodes:
+        self, device_id: int, model: DataModel | None, address: int, count: int, reading: bool
+    ) -> list[_Cell | None] | ExcCodes:
+        """回傳各位址對應的點；None 為讀取範圍內的空號位址（只有讀取會出現）。"""
         if model is None:
             return ExcCodes.ILLEGAL_ADDRESS
-        cells = []
+        cells: list[_Cell | None] = []
         for a in range(address, address + count):
-            cell = self._cells.get((device_id, model, a))
-            if cell is None:
+            key = (device_id, model, a)
+            cell = self._cells.get(key)
+            if cell is None and not (reading and key in self._readable):
                 return ExcCodes.ILLEGAL_ADDRESS
             cells.append(cell)
         forced = self._sim.forced_tag
-        if forced is not None and any(c.point.tag == forced for c in cells):
+        if forced is not None and any(c is not None and c.point.tag == forced for c in cells):
             return ExcCodes.DEVICE_FAILURE
         return cells
 
     async def async_getValues(
         self, device_id: int, func_code: int, address: int, count: int = 1
     ) -> list[int] | list[bool] | ExcCodes:
-        cells = self._lookup(device_id, _MODELS.get(func_code), address, count)
+        model = _MODELS.get(func_code)
+        cells = self._lookup(device_id, model, address, count, reading=True)
         if isinstance(cells, ExcCodes):
             return cells
         with self._sim.lock:
-            return [self._cell_value(c) for c in cells]
+            return [self._cell_value(c, model) for c in cells]
 
-    def _cell_value(self, cell: _Cell) -> int | bool:
+    def _cell_value(self, cell: _Cell | None, model: DataModel) -> int | bool:
+        if cell is None:  # 讀取範圍內的空號位址
+            return 0 if model == DataModel.HOLDING_REGISTER else False
         raw = self._sim.model.read(cell.point.tag)
         if cell.point.sensor_type == SensorType.POSITION:
             return split_i32(int(raw))[cell.word]
@@ -101,7 +116,7 @@ class _Store:
         address: int,
         values: Sequence[int] | Sequence[bool],
     ) -> ExcCodes | None:
-        cells = self._lookup(device_id, _MODELS.get(func_code), address, len(values))
+        cells = self._lookup(device_id, _MODELS.get(func_code), address, len(values), False)
         if isinstance(cells, ExcCodes):
             return cells
         if any(c.point.access != Access.READ_WRITE for c in cells):
@@ -162,9 +177,11 @@ class SimServer:
         points: IoPointTable,
         host: str = "127.0.0.1",
         port: int = 5020,
+        read_ranges: tuple[ReadRange, ...] | None = None,
     ):
         self.model = model
         self.points = points
+        self.read_ranges = read_ranges
         self.host = host
         self.port = port  # port 0 時 start() 後為實際監聽的埠號
         self.log = SimLog()

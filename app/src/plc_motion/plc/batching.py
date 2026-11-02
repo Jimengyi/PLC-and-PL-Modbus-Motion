@@ -1,18 +1,21 @@
 """批次讀取分組：把 io_points 合併成數筆 Modbus 讀取請求。
 
-同一 (Unit ID, Data Model) 內位址相連的點合併為一塊；位址有空隙就分塊，
-因此不會讀到 io_points 沒定義的位址（PLC 對表外位址可能回 Illegal Data Address）。
-一塊的長度不超過 Modbus 單筆讀取上限，且不把同一點（Position 的兩個 Word）切到兩塊。
+有 read_ranges.toml 時（spec FR-61）：完全照設定的範圍分組，每段一筆請求；範圍內
+io_points 沒定義的位址也一起讀。設定載入時已檢查每個點都完整落在某一段範圍內。
+
+沒有 read_ranges.toml 時自動分組：同一 (Unit ID, Data Model) 內位址相連的點合併為一塊；
+位址有空隙就分塊，因此不會讀到 io_points 沒定義的位址（PLC 對表外位址可能回
+Illegal Data Address）。一塊的長度不超過 Modbus 單筆讀取上限，且不把同一點
+（Position 的兩個 Word）切到兩塊。
 """
 
 from collections.abc import Iterable
 from dataclasses import dataclass
 
 from plc_motion.settings.io_points import DataModel, IoPoint
+from plc_motion.settings.read_ranges import MAX_BITS, MAX_REGISTERS, ReadRange
 
-# Modbus 單筆讀取上限：FC 1/2 為 2000 個 bit，FC 3 為 125 個 Word
-MAX_BITS = 2000
-MAX_REGISTERS = 125
+__all__ = ["MAX_BITS", "MAX_REGISTERS", "ReadBlock", "plan_reads"]
 
 
 @dataclass(frozen=True)
@@ -26,9 +29,13 @@ class ReadBlock:
 
 def plan_reads(
     points: Iterable[IoPoint],
+    ranges: Iterable[ReadRange] | None = None,
     max_bits: int = MAX_BITS,
     max_registers: int = MAX_REGISTERS,
 ) -> list[ReadBlock]:
+    if ranges is not None:
+        return _from_ranges(list(points), ranges)
+
     groups: dict[tuple[int, DataModel], list[IoPoint]] = {}
     for p in points:
         groups.setdefault((p.unit_id, p.data_model), []).append(p)
@@ -49,6 +56,22 @@ def plan_reads(
             current.append(p)
         if current:
             blocks.append(_block(unit_id, model, current))
+    return blocks
+
+
+def _from_ranges(points: list[IoPoint], ranges: Iterable[ReadRange]) -> list[ReadBlock]:
+    """每段範圍一塊，依設定檔的順序；範圍內沒有點的段落照樣讀。"""
+    blocks = []
+    for r in ranges:
+        inside = sorted(
+            (
+                p
+                for p in points
+                if (p.unit_id, p.data_model) == (r.unit_id, r.data_model) and r.contains(p)
+            ),
+            key=lambda p: p.start_address,
+        )
+        blocks.append(ReadBlock(r.unit_id, r.data_model, r.start, r.count, tuple(inside)))
     return blocks
 
 

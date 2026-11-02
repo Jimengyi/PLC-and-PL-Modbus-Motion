@@ -231,3 +231,126 @@ def test_write_timeout_raises(config_dir, silent_server):
     with pytest.raises(PlcCommError):
         lk.write("Servo Motor 1", True)
     lk.close()
+
+
+# ---- 讀取範圍（read_ranges.toml，spec FR-61、FR-62） ----
+
+RANGES_TOML = """
+[[unit]]
+unit_id = 0
+coil = "20~84, 120~184"
+holding_register = "20~83, 120~183"
+discrete_input = "24576~24612"
+"""
+
+
+@pytest.fixture
+def ranged_server(config_dir: Path):
+    (config_dir / "read_ranges.toml").write_bytes(RANGES_TOML.encode("utf-8"))
+    config = load_config(config_dir)
+    srv = SimServer(PlcModel(config.points), config.points, port=0, read_ranges=config.read_ranges)
+    srv.start()
+    yield srv
+    srv.stop()
+
+
+def ranged_link(server: SimServer) -> ModbusLink:
+    lk = ModbusLink(
+        server.points, "127.0.0.1", server.port, timeout_ms=1000, read_ranges=server.read_ranges
+    )
+    lk.connect()
+    return lk
+
+
+def test_read_ranges_one_request_per_range_and_values_match(ranged_server):
+    lk = ranged_link(ranged_server)
+    try:
+        with ranged_server.lock:
+            ranged_server.model.set_position(2, 33.5)
+            ranged_server.model.set_limit(6, "neg", True)
+        assert lk.request_count == 5
+        before = ranged_server.log.read_count()
+        snap = lk.read_all()
+        wait_until(lambda: ranged_server.log.read_count() >= before + 5)
+        assert ranged_server.log.read_count() - before == 5
+        for tag, value in model_values(ranged_server).items():
+            assert snap.raw(tag) == value, tag
+        assert snap.value("Current Position 2") == pytest.approx(33.5)
+        assert snap.axis(6).neg_limit_triggered
+    finally:
+        lk.close()
+
+
+def raw_client(server: SimServer) -> ModbusTcpClient:
+    c = ModbusTcpClient("127.0.0.1", port=server.port, timeout=2, retries=0)
+    assert c.connect()
+    return c
+
+
+def test_sim_reads_gap_address_inside_range_as_zero(ranged_server):
+    c = raw_client(ranged_server)
+    try:
+        # Coil 23、Holding Register 24 ~ 29 在 io_points 沒有定義、但在讀取範圍內
+        rr = c.read_coils(20, count=5, device_id=0)
+        assert not rr.isError() and rr.bits[3] is False
+        rr = c.read_holding_registers(24, count=6, device_id=0)
+        assert not rr.isError() and rr.registers == [0] * 6
+    finally:
+        c.close()
+
+
+def test_sim_still_rejects_gap_outside_ranges_and_gap_writes(ranged_server):
+    c = raw_client(ranged_server)
+    try:
+        illegal_address = 2  # Modbus 例外碼 Illegal Data Address
+        assert c.read_coils(85, count=1, device_id=0).exception_code == illegal_address  # 範圍外
+        # 範圍內的空號也不能寫
+        assert c.write_coil(23, True, device_id=0).exception_code == illegal_address
+    finally:
+        c.close()
+
+
+def test_sim_without_ranges_rejects_gap_read(server):
+    c = raw_client(server)
+    try:
+        assert c.read_coils(20, count=5, device_id=0).isError()
+    finally:
+        c.close()
+
+
+def test_range_rejected_by_plc_reports_batch_span(ranged_server, server):
+    # 有範圍設定的主程式連到「不接受空號」的 PLC（未給範圍的 SimServer）：
+    # 每個點單獨讀都正常，錯誤訊息指出是哪一段批次讀取
+    lk = ModbusLink(
+        server.points,
+        "127.0.0.1",
+        server.port,
+        timeout_ms=1000,
+        read_ranges=ranged_server.read_ranges,
+    )
+    lk.connect()
+    try:
+        with pytest.raises(PlcCommError) as ei:
+            lk.read_all()
+        assert "批次讀取 Coil 20 ~ 84" in str(ei.value)
+        assert ei.value.address == 20
+    finally:
+        lk.close()
+
+
+def test_range_without_points_is_still_read(config_dir):
+    text = RANGES_TOML.replace('"24576~24612"', '"24576~24612, 30000~30009"')
+    (config_dir / "read_ranges.toml").write_bytes(text.encode("utf-8"))
+    config = load_config(config_dir)
+    srv = SimServer(PlcModel(config.points), config.points, port=0, read_ranges=config.read_ranges)
+    srv.start()
+    try:
+        lk = ranged_link(srv)
+        try:
+            assert lk.request_count == 6
+            lk.read_all()
+            assert lk.connected
+        finally:
+            lk.close()
+    finally:
+        srv.stop()

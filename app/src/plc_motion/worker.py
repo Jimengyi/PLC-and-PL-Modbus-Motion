@@ -127,7 +127,11 @@ class PlcWorker(QObject):
     @Slot()
     def _on_started(self) -> None:
         self._link = ModbusLink(
-            self._config.points, self._host, self._port, self._config.device.connect_timeout_ms
+            self._config.points,
+            self._host,
+            self._port,
+            self._config.device.connect_timeout_ms,
+            self._config.read_ranges,
         )
         self._engine = MotionEngine(self._config, self._link, time.monotonic)
         self._engine.add_listener(self._on_engine_event)

@@ -17,9 +17,9 @@ related: ["[[design-modbus-master-app]]"]
 - UI：主視窗（左側導覽、軸控頁、IO Monitor）、系統匣、主題；只送命令、收快照，不碰 Modbus。
 - 交握引擎：在背景執行緒每輪依 PLC 快照推進七軸狀態機，負責多軸命令、全域動作鎖、前置檢查與逾時。
 - PLC 讀寫介面：交握引擎與 PLC 之間的 seam；正式接 Modbus 連線，單元測試接 PLC 行為模型。
-- Modbus 連線：包裝 pymodbus client，依點位表合併批次讀取。
-- 設定載入：讀四個設定檔並做啟動檢查，產出唯讀設定給引擎與 UI；Check Status 與點位資料由它寫回。
-- 模擬 PLC：獨立程式，pymodbus server 包住 PLC 行為模型，讀同一份 io_points。
+- Modbus 連線：包裝 pymodbus client，依 read_ranges.toml 的範圍批次讀取；沒有該檔時依點位表自動合併連續位址。
+- 設定載入：讀五個設定檔（read_ranges.toml 可省略）並做啟動檢查，產出唯讀設定給引擎與 UI；Check Status 與點位資料由它寫回。
+- 模擬 PLC：獨立程式，pymodbus server 包住 PLC 行為模型，讀同一份 io_points 與 read_ranges（範圍內的空號位址讀到 0）。
 - UI → 交握引擎：命令經佇列送進背景執行緒；JOG 放開插隊立即寫 0。
 - 交握引擎 → UI：每輪送出快照與操作事件（Qt signal）。
 
@@ -91,3 +91,4 @@ flowchart LR
 | 日期 | 觸發來源 | 摘要 |
 |---|---|---|
 | 2026-10-31 | 初版定稿（[[design-modbus-master-app]]） | 建立主程式與模擬 PLC 的方塊結構 |
+| 2026-11-02 | spec FR-61、FR-62 | 新增 read_ranges.toml：使用者指定批次讀取範圍，主程式與模擬 PLC 共用 |

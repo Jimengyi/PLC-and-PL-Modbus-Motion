@@ -53,7 +53,7 @@ related: ["[[design-modbus-master-app]]"]
 
 ### 設定檔
 
-- FR-1：設定檔放在 `config` 資料夾：打包後位於 exe 同層，從原始碼執行時位於 `app\config`。共四個檔：`device.toml`、`axes.toml`、`io_points.csv`、`positions.csv`。
+- FR-1：設定檔放在 `config` 資料夾：打包後位於 exe 同層，從原始碼執行時位於 `app\config`。共五個檔：`device.toml`、`axes.toml`、`io_points.csv`、`positions.csv`、`read_ranges.toml`（可省略，見 FR-61）。
 - FR-2：`device.toml` 至少包含：連線 host、port、連線逾時（ms）；輪詢週期（ms，預設 200）；交握逾時（秒，預設 5）；Reset_Alarm 脈衝時間（ms，預設 500）；日誌保留天數（預設 30）。（舊版的主題設定已移除，檔案裡留著不影響載入。）
 - FR-3：`axes.toml` 每軸一段，包含：軸號（1 ~ 7）、顯示名稱、軟體極限最小值與最大值、步進長／中／短步距、預設速度（1 ~ 100）。數值單位與該軸的顯示單位相同（mm 或 deg）。
 - FR-4：`io_points.csv` 每列一個點，欄位為 Tag Name、Display Name、Start Address、Address Length、Unit ID、Data Model（Coil、Discrete Input、Holding Register）、Sensor Type（Boolean、U16、Position）、Access（Read Only、Read Write）、Visible（O 或 X）、Description、Attributes、Check Status（OK、NG、Unchecked、Recheck、Ignore）。
@@ -65,13 +65,14 @@ related: ["[[design-modbus-master-app]]"]
 - FR-6：`positions.csv` 欄位為 #Point、Name、X、Y、Z、RX、RY、RZ、Lift、Description，固定 200 列（P001 ~ P200）。檔案不存在時自動建立 200 個空白點（座標為 0）。
 - FR-7：CSV 讀取時接受 UTF-8（有無 BOM 皆可）與 Big5 編碼；程式寫出的 CSV 一律為 UTF-8 含 BOM。
 - FR-8：啟動檢查，任一項不通過即顯示列出全部錯誤的視窗並結束程式：
-  - 設定檔缺少（`positions.csv` 除外）或格式無法解析
+  - 設定檔缺少（`positions.csv`、`read_ranges.toml` 除外）或格式無法解析
   - Tag Name 重複
   - 列舉欄位（Data Model、Sensor Type、Access、Visible、Check Status）不在 FR-4 的列舉內
   - FR-5 的必要 Tag 缺少，或其 Data Model、Sensor Type、Access、Address Length、Attributes 與下表不符
   - 同一軸 `Current Position n` 與 `Target Position n` 的倍率或單位不一致
   - 同一 Unit ID、同一 Data Model 下位址範圍重疊
   - 軟體極限最小值不小於最大值、步距不為正、預設速度不在 1 ~ 100
+  - `read_ranges.toml` 的錯誤（見 FR-61）
 
   | 名稱 | Data Model | Sensor Type | Access | Address Length | Attributes |
   |---|---|---|---|---|---|
@@ -91,7 +92,13 @@ related: ["[[design-modbus-master-app]]"]
 
 - FR-10：程式啟動後自動連線。連不上時主視窗照常開啟，顯示未連線，不自動重試。
 - FR-11：頂列與系統匣選單有「重新連線」，只由操作員觸發。
-- FR-12：連線中依輪詢週期讀取 io_points 中的全部點（含 Visible = X 的點），以合併連續位址的批次讀取完成。
+- FR-12：連線中依輪詢週期讀取 io_points 中的全部點（含 Visible = X 的點），以批次讀取完成：有 `read_ranges.toml` 時照 FR-61 的範圍；沒有時自動合併連續位址，只讀 io_points 定義的位址。
+- FR-61：`read_ranges.toml` 讓使用者指定批次讀取範圍：
+  - 每個 `[[unit]]` 段落一個 Unit ID（`unit_id`），`coil`、`discrete_input`、`holding_register` 各寫一串範圍，格式「起~迄」（含兩端，單一位址可只寫一個數字），多段以逗號分隔；留空或不寫表示該 Data Model 不讀。
+  - 檔案不存在或沒有任何 `[[unit]]` 時改用自動分組。
+  - 有範圍時每段一筆讀取請求、依檔案順序送出；範圍內 io_points 沒定義的位址也讀，值不使用；沒有任何點的範圍照樣讀。
+  - 啟動檢查（併入 FR-8 的錯誤視窗）：範圍格式錯、起始大於結束、位址超過 65535、單段超過單筆上限（Coil、Discrete Input 2000，Holding Register 125）、同一 Unit ID 同一 Data Model 範圍重疊、`unit_id` 重複或不是非負整數、不認得的設定鍵（含 `input_register`）；io_points 有點不在任何範圍內，或跨越兩段範圍（例如 Position 的兩個 Word），列出該點的 Tag Name、列號與位址。
+  - 批次讀取回 Modbus 例外、但範圍內每個點單獨重讀都正常時（PLC 不接受範圍內的空號位址），訊息改為該段批次讀取的 Data Model 與位址範圍，不帶 Tag Name（例外於 FR-13）。
 - FR-13：任何讀寫失敗、逾時或 PLC 回傳 Modbus 例外時，判定為通訊中斷：斷開連線、進行中的操作以「通訊中斷」結束、畫面顯示未連線；斷線前有軸 Busy = 1 或 JOG 按住中時，另外提示「軸可能仍在移動，請按急停」；若為 Modbus 例外，訊息需包含 Tag Name 與位址。
 - FR-14：命令列參數 `--host`、`--port` 可暫時覆蓋 `device.toml` 的連線設定，不修改設定檔。
 
@@ -185,6 +192,7 @@ related: ["[[design-modbus-master-app]]"]
   - 對指定軸注入 Alarm Code：動作中立即停止，Alarm Code 設為注入值、Busy = 0、Ready = 0。附「原因持續」勾選：勾選時 Reset Alarm 不清除，取消勾選後 Reset Alarm 才能清除
   - 故障注入「不回 Reply」「不複製命令碼」（逐軸）
   - 「中斷所有連線」：關閉目前的 Modbus 連線、所有點位與模擬狀態保留，之後仍接受新連線
+- FR-62：`plc-sim` 讀同一份 `read_ranges.toml`：範圍內 io_points 沒定義的位址讀取回 0；範圍外的未定義位址，以及任何未定義位址的寫入，回 Illegal Data Address。
 - FR-56：`plc-sim` 提供可檢視、可匯出為文字檔的紀錄，每筆帶毫秒時間：
   - 收到的寫入（Tag Name、值）
   - 連線建立與中斷
@@ -197,6 +205,7 @@ related: ["[[design-modbus-master-app]]"]
   - `io_points.csv` 含 FR-5 全部必要 Tag，位址、型態依 `docs/七軸_Modbus位址表.md` 與 FR-8 型態表，Position 點的倍率與單位依該位址表（X/Y/Z `10000,mm`、RX/RY/RZ `100,deg`、升降軸 `100,mm`）
   - `JOG Plus n`、`JOG Minus n`、`Request n` 的 Visible 為 X，其餘為 O；Check Status 皆為 Unchecked
   - `device.toml` 連線值為 192.168.1.105:502、連線逾時 2000 ms，其餘依 FR-2 預設值
+  - `read_ranges.toml` 取自使用者 LabVIEW 參考檔 `Range_Settings_01.conf`：Unit ID 0，Coil `20~84, 120~184`、Holding Register `20~83, 120~183`、Discrete Input `24576~24612`，每輪 5 筆請求（2026-11-02）
   - `axes.toml` 七軸名稱依序為 X、Y、Z、RX、RY、RZ、升降；軟體極限、步進距離為可運作的暫定值，並以註解標示「待依機構行程確認」
   - 不採納 review 建議「程式強制隱藏 JOG／Request」：使用者決定以 Visible 欄控制，程式不另行檢查（2026-10-31）
 
@@ -230,7 +239,9 @@ related: ["[[design-modbus-master-app]]"]
 - AC-2：分別製造 FR-8 的每一種錯誤（每次一種；型態表逐欄至少各一例，含把 `Positive Limit 1` 的 `ON` 拿掉）啟動，程式顯示列出該錯誤的視窗後結束，結束碼非 0；同時製造兩種錯誤時兩者都被列出。（觀測：錯誤視窗內容、結束碼）
 - AC-3：以 Big5 編碼存成的 `io_points.csv`（Display Name 含中文）啟動，畫面中文正確；程式寫回 Check Status 後，檔案為 UTF-8 含 BOM，再以 Excel 預設方式開啟中文正確。（觀測：畫面、檔案位元組）
 - AC-4：刪除 `positions.csv` 後啟動，檔案被建立，含 P001 ~ P200 共 200 列。（觀測：檔案內容）
-- AC-5：在 `io_points.csv` 新增一個非軸的 Tag（如 `Cylinder1 Up`，Coil、Read Write），模擬器同樣讀這份檔；它出現在 IO Monitor 右欄，雙擊後模擬器狀態對應位址變為 1。（觀測：畫面、模擬器狀態）
+- AC-43：以預設 `config` 連上 `plc-sim`，主視窗的通訊狀態顯示每輪 5 筆請求，AC-1 成立；刪掉 `read_ranges.toml` 後重新啟動兩者，請求筆數變為自動分組的筆數，AC-1 仍成立。（觀測：畫面、模擬器狀態）
+- AC-44：分別製造 FR-61 的每一種啟動檢查錯誤（每次一種），程式顯示列出該錯誤的視窗後結束，結束碼非 0；把 Coil 範圍改為 `20~79, 120~184` 時，錯誤列出第 7 軸 Coil 80 ~ 84 的四個點。（觀測：錯誤視窗內容、結束碼）
+- AC-5：在 `io_points.csv` 新增一個非軸的 Tag（如 `Cylinder1 Up`，Coil、Read Write），並在 `read_ranges.toml` 加上它的位址，模擬器同樣讀這兩份檔；它出現在 IO Monitor 右欄，雙擊後模擬器狀態對應位址變為 1。（觀測：畫面、模擬器狀態）
 
 連線
 
@@ -305,7 +316,7 @@ IO Monitor
 
 ## Open Questions
 
-- 批次讀取如何分組：留給實作決定，邊界為每輪讀到 io_points 的全部點，且不讀取點位表以外的位址範圍造成 PLC 回傳例外。
+- 批次讀取如何分組：已由 FR-61 定案（2026-11-02）——有 `read_ranges.toml` 照設定，沒有則自動合併連續位址。實機是否接受範圍內的空號位址待接機確認；不接受時調整範圍或刪掉該檔。
 - 交握期間是否縮短輪詢週期：本次不做；實作時若量到從按下到開始移動明顯超過 1 秒，回報而不自行加設定。
 - 顏色、圖示、間距與字型：依 FR-45 的工業風深色主題，細節留給實作決定，邊界為 Check Status 五種狀態與「正常／動作中／異常／未連線」可互相區分，且版面結構符合 FR-28 ~ FR-41。
 - 模擬器的最大速度與原點復歸延遲：留給實作決定，邊界為 AC-17 可被觀察到（延遲需長於一個輪詢週期）。

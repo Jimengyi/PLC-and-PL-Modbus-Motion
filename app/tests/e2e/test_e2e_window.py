@@ -685,7 +685,9 @@ def test_ac36_copied_package_runs_without_uv_and_mirrors_sim(
     assert not [p for p in copy.rglob("*") if "plc-sim" in p.name.lower() or p.name == "sim"]
 
     config = load_config(copy / "config")
-    server = SimServer(PlcModel(config.points), config.points, "127.0.0.1", 5020)
+    server = SimServer(
+        PlcModel(config.points), config.points, "127.0.0.1", 5020, config.read_ranges
+    )
     server.start()
     try:
         with server.lock:

@@ -32,7 +32,7 @@ def dist() -> Path:
 
 def test_exe_and_default_config_are_present(dist: Path):
     assert (dist / "plc-motion.exe").is_file()
-    for name in ("device.toml", "axes.toml", "io_points.csv", "positions.csv"):
+    for name in ("device.toml", "axes.toml", "io_points.csv", "positions.csv", "read_ranges.toml"):
         assert (dist / "config" / name).read_bytes() == (APP_DIR / "config" / name).read_bytes()
 
 
@@ -80,7 +80,7 @@ def test_copied_exe_connects_to_simulator(dist: Path, tmp_path: Path):
     config = load_config(APP_DIR / "config")
     copy = tmp_path / "plc-motion"
     shutil.copytree(dist, copy)
-    server = SimServer(PlcModel(config.points), config.points, "127.0.0.1", 0)
+    server = SimServer(PlcModel(config.points), config.points, "127.0.0.1", 0, config.read_ranges)
     server.start()
     port = server.port
     proc = subprocess.Popen(

@@ -113,3 +113,15 @@ def test_default_config_covers_every_point_once_and_no_undefined_address(config_
     # 第 1 軸 Coil 23 未定義：Ready~Find Home Finish 與 Reply 分在兩塊
     coil_starts = {b.start for b in blocks if b.data_model == _COIL}
     assert {20, 24} <= coil_starts
+
+
+def test_ranges_make_one_block_per_range_including_gaps():
+    from plc_motion.settings.read_ranges import ReadRange
+
+    points = [pt("a", 20, _COIL), pt("b", 24, _COIL), pt("pos", 22, _HR, length=2), pt("c", 20)]
+    ranges = [ReadRange(0, _HR, 20, 30), ReadRange(0, _COIL, 20, 24), ReadRange(0, _DI, 5, 9)]
+    assert spans(plan_reads(points, ranges)) == [
+        (0, "Holding Register", 20, 11, ["c", "pos"]),
+        (0, "Coil", 20, 5, ["a", "b"]),
+        (0, "Discrete Input", 5, 5, []),
+    ]

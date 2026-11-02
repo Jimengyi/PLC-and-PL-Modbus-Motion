@@ -159,6 +159,10 @@ def test_ac5_extra_tag_appears_in_io_monitor_and_writes_sim(request, e2e_config_
         ]
     )
     write_csv(path, records)
+    # 新增的點也要加進讀取範圍（FR-61），否則啟動檢查不通過
+    ranges = e2e_config_dir / "read_ranges.toml"
+    text = ranges.read_text(encoding="utf-8")
+    ranges.write_text(text.replace('"20~84, 120~184"', '"20~84, 120~184, 300"'), encoding="utf-8")
 
     e2e = request.getfixturevalue("e2e")  # 模擬器與 plc-motion 都讀這份檔
     assert e2e.sim.points.get("Cylinder1 Up").start_address == 300

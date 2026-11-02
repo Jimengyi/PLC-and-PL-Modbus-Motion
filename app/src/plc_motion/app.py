@@ -160,6 +160,10 @@ def main(argv: list[str] | None = None) -> int:
         host = args.host or config.device.host
         port = args.port or config.device.port
         log.info("連線目標：%s:%s", host, port)
+        if config.read_ranges is None:
+            log.info("批次讀取：沒有 read_ranges.toml，依位址連續自動分組")
+        else:
+            log.info("批次讀取：依 read_ranges.toml，每輪 %d 筆請求", len(config.read_ranges))
 
         motion = MotionApp(config, host, port)
         instance.activate_requested.connect(motion.window.show_from_tray)

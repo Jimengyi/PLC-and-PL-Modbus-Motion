@@ -376,7 +376,7 @@ def logs_dir(tmp_path: Path):
 
 @pytest.fixture
 def sim(config: AppConfig):
-    server = SimServer(PlcModel(config.points), config.points, HOST, 0)
+    server = SimServer(PlcModel(config.points), config.points, HOST, 0, config.read_ranges)
     server.start()
     yield server
     server.stop()

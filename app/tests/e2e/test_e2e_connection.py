@@ -88,7 +88,9 @@ def test_ac6_start_without_sim_then_reconnect_manually(e2e, config):
     assert app.window.isVisible()
     assert e2e.enabled_controls() == frozenset()
 
-    server = SimServer(PlcModel(config.points), config.points, "127.0.0.1", port)
+    server = SimServer(
+        PlcModel(config.points), config.points, "127.0.0.1", port, config.read_ranges
+    )
     server.start()
     try:
         e2e.settle(1500)

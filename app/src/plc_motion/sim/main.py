@@ -2,7 +2,7 @@
 
     plc-sim [--host 127.0.0.1] [--port 5020] [--config DIR]
 
-載入設定資料夾的 io_points.csv，啟動模擬 PLC 的 Modbus TCP server 與操作視窗。
+載入設定資料夾的 io_points.csv 與 read_ranges.toml，啟動模擬 PLC 的 Modbus TCP server 與操作視窗。
 """
 
 import argparse
@@ -49,7 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         return 1
     apply_theme(app)
 
-    server = SimServer(PlcModel(config.points), config.points, args.host, args.port)
+    server = SimServer(
+        PlcModel(config.points), config.points, args.host, args.port, config.read_ranges
+    )
     try:
         server.start()
     except Exception as e:
