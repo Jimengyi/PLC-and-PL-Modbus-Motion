@@ -263,3 +263,19 @@ def test_primary_emits_activate_on_message(qtbot):
         client.disconnectFromServer()
     finally:
         primary.release()
+
+
+def test_app_user_model_id_is_set_for_taskbar_icon(qtbot, config_dir):
+    """工作列顯示程式自己的圖示：啟動後本行程的 AppUserModelID 為 plc-motion 的 ID。"""
+    import ctypes
+    from ctypes import wintypes
+
+    from plc_motion.app import APP_USER_MODEL_ID
+
+    code = run_main_and_inspect(config_dir, lambda w: None)
+    assert code == 0
+    get = ctypes.windll.shell32.GetCurrentProcessExplicitAppUserModelID
+    out = wintypes.LPWSTR()
+    assert get(ctypes.byref(out)) == 0
+    assert out.value == APP_USER_MODEL_ID
+    assert not QApplication.instance().windowIcon().isNull()

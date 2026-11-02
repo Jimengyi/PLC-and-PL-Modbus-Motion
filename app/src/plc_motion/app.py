@@ -27,7 +27,7 @@ from plc_motion.ui.io_monitor import IoMonitorPage
 from plc_motion.ui.main_window import MainWindow, axis_icon, io_icon
 from plc_motion.ui.single_instance import SingleInstance
 from plc_motion.ui.theme import apply_theme
-from plc_motion.ui.tray import APP_TITLE, TrayController
+from plc_motion.ui.tray import APP_TITLE, TrayController, app_icon
 from plc_motion.worker import EngineStatus, start_worker
 
 log = logging.getLogger("plc_motion.app")
@@ -52,6 +52,7 @@ class MotionApp(QObject):
         self.thread, self.worker = start_worker(config, host, port)
         # start_worker 的自動連線排在事件迴圈：以下接線都在回到事件迴圈之前完成
         self.window = MainWindow(config, self.worker, f"{host}:{port}")
+        self.window.setWindowIcon(app_icon())
         self.axis_page = AxisPage(config, self.worker)
         self.window.add_page("軸控", axis_icon(), self.axis_page)
         self.io_page = IoMonitorPage(config, self.worker)
@@ -106,14 +107,31 @@ def parse_args(argv: list[str] | None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+APP_USER_MODEL_ID = "PlcMotion.plc-motion"
+
+
+def set_app_user_model_id() -> None:
+    """讓 Windows 工作列把本程式當成獨立的應用程式、顯示視窗圖示，而不是 python.exe 的圖示。"""
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    try:
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(APP_USER_MODEL_ID)
+    except AttributeError, OSError:
+        log.warning("無法設定 AppUserModelID，工作列可能顯示預設圖示")
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     config_dir = Path(args.config).resolve() if args.config else resolve_config_dir()
     logs_dir = config_dir.parent / "logs"
 
+    set_app_user_model_id()  # 必須在建立任何視窗之前
     app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("plc-motion")
     app.setQuitOnLastWindowClosed(False)  # 主視窗縮到系統匣時不結束
+    app.setWindowIcon(app_icon())  # 含設定錯誤視窗等所有視窗與工作列
 
     instance = SingleInstance()
     if not instance.acquire():

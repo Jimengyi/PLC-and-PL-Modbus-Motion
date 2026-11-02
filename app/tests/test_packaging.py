@@ -102,3 +102,14 @@ def test_copied_exe_connects_to_simulator(dist: Path, tmp_path: Path):
     finally:
         subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True)
         server.stop()
+
+
+def test_exe_uses_app_icon(dist: Path):
+    """exe 內嵌的圖示就是程式的六角形圖示（.ico 的 PNG 原樣存成 exe 的圖示資源）。"""
+    import struct
+
+    ico = (dist.parent.parent / "build" / "plc-motion.ico").read_bytes()
+    exe = (dist / "plc-motion.exe").read_bytes()
+    count = struct.unpack_from("<H", ico, 4)[0]
+    length, offset = struct.unpack_from("<II", ico, 6 + 16 * (count - 1) + 8)
+    assert ico[offset : offset + length] in exe  # 最大尺寸（256 px）那張

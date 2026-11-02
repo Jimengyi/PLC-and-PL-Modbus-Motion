@@ -1,13 +1,28 @@
 """系統匣（spec FR-42、FR-43）：四態圖示、Alarm／急停通知、右鍵選單與雙擊叫回。
 
+圖示是六角形（六軸平台）：外框與中心點用狀態色，中心三條輻線代表平台支臂。狀態不只靠顏色：
+動作中中心有 ▶、異常中心有「!」、未連線外框在六個角斷開。
+「正常」版本同時當作程式圖示（`app_icon`）。
+
 TrayController 只發 signal，接到哪裡由 `app.py` 決定；狀態由 `update(snapshot, status)` 餵入，
 與 `PlcWorker.snapshot_ready` 的參數相同。
 """
 
+import struct
 from enum import Enum
 
-from PySide6.QtCore import QObject, QPointF, Qt, Signal
-from PySide6.QtGui import QAction, QBrush, QColor, QIcon, QPainter, QPen, QPixmap
+from PySide6.QtCore import QBuffer, QByteArray, QIODevice, QObject, QPointF, QRectF, Qt, Signal
+from PySide6.QtGui import (
+    QAction,
+    QBrush,
+    QColor,
+    QIcon,
+    QImage,
+    QPainter,
+    QPen,
+    QPixmap,
+    QPolygonF,
+)
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 from plc_motion.plc.snapshot import Snapshot
@@ -44,21 +59,90 @@ def tray_state(snapshot: Snapshot | None, status: EngineStatus, axes) -> TraySta
     return TrayState.NORMAL
 
 
+ICON_SIZES = (16, 20, 24, 32, 48, 64, 128, 256)
+_HEX = ((32, 4), (56, 18), (56, 46), (32, 60), (8, 46), (8, 18))  # 64 × 64 座標
+_SPOKES = ((32, 13), (48, 41), (16, 41))
+_FACE, _SPOKE, _MARK = "#1f2328", "#8b939e", "#ffffff"
+
+
+def draw_hex_icon(painter: QPainter, state: TrayState) -> None:
+    """在 64 × 64 座標系畫六角形圖示（呼叫端先 `scale`）。"""
+    color = QColor(STATE_COLORS[state])
+    hexagon = QPolygonF([QPointF(x, y) for x, y in _HEX])
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(QColor(_FACE)))
+    painter.drawPolygon(hexagon)
+    painter.setBrush(Qt.BrushStyle.NoBrush)
+    if state is TrayState.DISCONNECTED:
+        # 斷開的外框：每條邊只畫中間一段，六個角留缺口（Qt 虛線在小尺寸下幾乎看不出來）
+        painter.setPen(QPen(color, 6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.FlatCap))
+        for a, b in zip(_HEX, (*_HEX[1:], _HEX[0]), strict=True):
+            pa, pb = QPointF(*a), QPointF(*b)
+            painter.drawLine(pa + (pb - pa) * 0.25, pa + (pb - pa) * 0.75)
+    else:
+        outline = QPen(color, 6)
+        outline.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(outline)
+        painter.drawPolygon(hexagon)
+
+    spoke = QPen(QColor(_SPOKE), 3)
+    spoke.setCapStyle(Qt.PenCapStyle.RoundCap)
+    painter.setPen(spoke)
+    for x, y in _SPOKES:
+        painter.drawLine(QPointF(32, 32), QPointF(x, y))
+
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QBrush(color))
+    painter.drawEllipse(QPointF(32, 32), 11, 11)
+    painter.setBrush(QBrush(QColor(_MARK)))
+    if state is TrayState.FAULT:
+        painter.drawRoundedRect(QRectF(30.5, 25.5, 3, 8.5), 1.5, 1.5)
+        painter.drawEllipse(QPointF(32, 37.5), 1.8, 1.8)
+    elif state is TrayState.BUSY:
+        painter.drawPolygon(QPolygonF([QPointF(27, 27), QPointF(37.5, 32), QPointF(27, 37)]))
+
+
 def state_icon(state: TrayState) -> QIcon:
     icon = QIcon()
-    for size in (16, 20, 24, 32, 48, 64):
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(STATE_COLORS[state])
-        painter.setPen(QPen(color.darker(150), max(1.0, size / 16)))
-        painter.setBrush(QBrush(color))
-        r = size / 2 - max(1.0, size / 16)
-        painter.drawEllipse(QPointF(size / 2, size / 2), r, r)
-        painter.end()
-        icon.addPixmap(pixmap)
+    for size in ICON_SIZES:
+        icon.addPixmap(QPixmap.fromImage(icon_image(state, size)))
     return icon
+
+
+def icon_image(state: TrayState, size: int) -> QImage:
+    image = QImage(size, size, QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+    painter.scale(size / 64, size / 64)
+    draw_hex_icon(painter, state)
+    painter.end()
+    return image
+
+
+def ico_bytes(state: TrayState = TrayState.NORMAL) -> bytes:
+    """Windows .ico（打包時給 exe 用）：ICON_SIZES 各一張，每張以 PNG 存放。"""
+    pngs = []
+    for size in ICON_SIZES:
+        data = QByteArray()
+        buffer = QBuffer(data)
+        buffer.open(QIODevice.OpenModeFlag.WriteOnly)
+        icon_image(state, size).save(buffer, "PNG")
+        pngs.append((size, bytes(data)))
+    header = struct.pack("<HHH", 0, 1, len(pngs))
+    offset = len(header) + 16 * len(pngs)
+    entries, payload = b"", b""
+    for size, png in pngs:
+        side = size % 256  # 256 在目錄中記為 0
+        entries += struct.pack("<BBBBHHII", side, side, 0, 0, 1, 32, len(png), offset)
+        offset += len(png)
+        payload += png
+    return header + entries + payload
+
+
+def app_icon() -> QIcon:
+    """程式圖示（主視窗標題列、工作列）：系統匣圖示的「正常」版本。"""
+    return state_icon(TrayState.NORMAL)
 
 
 class TrayController(QObject):

@@ -25,6 +25,7 @@ exe = EXE(  # noqa: F821
     [],
     exclude_binaries=True,  # onedir
     name="plc-motion",
+    icon=str(APP_DIR / "build" / "plc-motion.ico"),  # build.py 先產生
     console=False,
     upx=False,
 )

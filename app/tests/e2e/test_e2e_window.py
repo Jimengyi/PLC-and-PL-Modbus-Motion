@@ -473,7 +473,7 @@ def test_ac31_alarm_while_in_tray_notifies_and_turns_icon_fault(e2e):
     e2e.until(lambda: notices)
     assert notices == [("Alarm 發生", "第 3 軸 Alarm Code = 5")]
     assert QSystemTrayIcon.supportsMessages()
-    pixel = app.tray.icon.icon().pixmap(32, 32).toImage().pixelColor(16, 16)
+    pixel = app.tray.icon.icon().pixmap(32, 32).toImage().pixelColor(12, 16)  # 中心狀態點
     assert pixel.name() == STATE_COLORS[TrayState.FAULT]
     assert "異常" in app.tray.icon.toolTip()
     assert not app.window.isVisible()

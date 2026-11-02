@@ -26,8 +26,9 @@ def notices(tray, monkeypatch):
 
 
 def center_color(tray: TrayController) -> str:
+    """中心狀態點的顏色：取中心左側 4 px，避開動作中的 ▶ 與異常的「!」。"""
     image = tray.icon.icon().pixmap(32, 32).toImage()
-    return image.pixelColor(16, 16).name()
+    return image.pixelColor(12, 16).name()
 
 
 def test_icon_is_visible_in_system_tray(tray):
@@ -144,3 +145,46 @@ def test_double_click_requests_show(tray, qtbot):
 def test_context_menu_activation_does_not_request_show(tray, qtbot):
     with qtbot.assertNotEmitted(tray.show_requested, wait=100):
         tray.icon.activated.emit(QSystemTrayIcon.ActivationReason.Context)
+
+
+def test_states_differ_by_shape_not_only_color(qtbot):
+    """色弱也分得出：異常中心有白色「!」、動作中有 ▶、未連線外框在角上斷開。"""
+    from plc_motion.ui.tray import state_icon
+
+    def image(state):
+        return state_icon(state).pixmap(64, 64).toImage()
+
+    white = "#ffffff"
+    assert image(TrayState.FAULT).pixelColor(32, 28).name() == white  # ! 的直線
+    assert image(TrayState.BUSY).pixelColor(30, 32).name() == white  # ▶
+    assert image(TrayState.NORMAL).pixelColor(32, 28).name() != white
+
+    # 頂角：實線外框有顏色；未連線的外框在角上斷開，該處透明
+    assert image(TrayState.NORMAL).pixelColor(32, 2).alpha() > 128
+    assert image(TrayState.DISCONNECTED).pixelColor(32, 2).alpha() < 64
+
+
+def test_app_icon_is_normal_tray_icon(qtbot):
+    from plc_motion.ui.tray import app_icon, state_icon
+
+    a = app_icon().pixmap(32, 32).toImage()
+    b = state_icon(TrayState.NORMAL).pixmap(32, 32).toImage()
+    assert a == b
+
+
+def test_ico_contains_every_size_as_png(qtbot):
+    """exe 圖示用的 .ico：每個尺寸一張 PNG，目錄的寬高、長度、位移都對得上。"""
+    import struct
+
+    from plc_motion.ui.tray import ICON_SIZES, ico_bytes
+
+    data = ico_bytes()
+    reserved, kind, count = struct.unpack_from("<HHH", data, 0)
+    assert (reserved, kind, count) == (0, 1, len(ICON_SIZES))
+    for i, size in enumerate(ICON_SIZES):
+        w, h, _, _, planes, bpp, length, offset = struct.unpack_from("<BBBBHHII", data, 6 + 16 * i)
+        assert (w, h) == (size % 256, size % 256)
+        assert (planes, bpp) == (1, 32)
+        png = data[offset : offset + length]
+        assert png.startswith(b"\x89PNG\r\n\x1a\n")
+        assert struct.unpack(">II", png[16:24]) == (size, size)  # IHDR 寬高

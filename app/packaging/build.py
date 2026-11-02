@@ -14,6 +14,8 @@ APP_DIR = PACKAGING_DIR.parent
 DIST_DIR = APP_DIR / "dist"
 OUT_DIR = DIST_DIR / "plc-motion"
 BUILD_DIR = APP_DIR / "build"
+# exe 圖示：由程式內的系統匣圖示（正常狀態）產生，plc_motion.spec 讀這個路徑
+ICON_PATH = BUILD_DIR / "plc-motion.ico"
 
 # 實際打包進去且帶授權檔的第三方套件：(發行套件名, 輸出檔名)
 BUNDLED_LICENSES = [("pymodbus", "pymodbus-LICENSE.txt")]
@@ -27,7 +29,19 @@ def _copy_license(dist_name: str, target: Path) -> None:
     raise FileNotFoundError(f"找不到 {dist_name} 的授權檔")
 
 
+def write_icon() -> None:
+    sys.path.insert(0, str(APP_DIR / "src"))
+    from PySide6.QtGui import QGuiApplication
+
+    from plc_motion.ui.tray import ico_bytes
+
+    _app = QGuiApplication.instance() or QGuiApplication(["build", "-platform", "offscreen"])
+    BUILD_DIR.mkdir(exist_ok=True)
+    ICON_PATH.write_bytes(ico_bytes())
+
+
 def main() -> None:
+    write_icon()
     subprocess.run(
         [
             sys.executable,
