@@ -40,46 +40,42 @@ def test_ac1_default_config_connects_and_mirrors_sim_state(e2e):
 
     app = e2e.start()
     e2e.wait_connected()
-    e2e.until(lambda: app.axis_page.rows[2].lamps["ready"].property("state") == "ok")
+    e2e.until(lambda: app.axis_page.cards[2].position_label.text() == "-7.5000")
 
     port = e2e.sim.port
-    assert app.window.connection_label.text() == f"● 已連線 127.0.0.1:{port}"
-    rows = app.axis_page.rows
-    positions = {n: rows[n].position_label.text() for n in rows}
+    assert f"已連線 127.0.0.1:{port}" in app.window.connection_label.text()
+    page = app.axis_page
+    cards = page.cards
+    positions = {n: (cards[n].position_label.text(), cards[n].unit) for n in cards}
     assert positions == {
-        1: "12.3456 mm",
-        2: "-7.5000 mm",
-        3: "0.0000 mm",
-        4: "4.25 deg",
-        5: "-1.50 deg",
-        6: "29.99 deg",
-        7: "55.55 mm",
+        1: ("12.3456", "mm"),
+        2: ("-7.5000", "mm"),
+        3: ("0.0000", "mm"),
+        4: ("4.25", "deg"),
+        5: ("-1.50", "deg"),
+        6: ("29.99", "deg"),
+        7: ("55.55", "mm"),
     }
-    lamps = {
-        key: {n for n in rows if lit(rows[n].lamps[key])}
-        for key in (
-            "servo",
-            "ready",
-            "busy",
-            "home_finish",
-            "pos_limit",
-            "home_sensor",
-            "neg_limit",
-        )
-    }
-    assert lamps == {
+    lamps: dict[str, set[int]] = {}
+    alarms: dict[int, str] = {}
+    for n in cards:  # 燈號在選定軸區塊：逐軸點卡片讀取
+        e2e.click_row(n)
+        for key, lamp in page.selected_lamps.items():
+            if lit(lamp):
+                lamps.setdefault(key, set()).add(n)
+        alarms[n] = page.alarm_code_label.text()
+    assert {k: v for k, v in lamps.items() if k not in ("request", "reply")} == {
         "servo": {1, 2, 3, 7},
         "ready": {1, 2, 3, 7},
-        "busy": set(),
         "home_finish": {1, 7},
         "pos_limit": {2},
         "home_sensor": {3},
         "neg_limit": {5},
     }
-    assert {n: rows[n].alarm_label.text() for n in rows} == {
-        n: ("4" if n == 6 else "0") for n in rows
-    }
-    assert rows[6].property("state") == "fault"
+    assert alarms == {n: ("4" if n == 6 else "0") for n in cards}
+    assert cards[6].property("state") == "fault"
+    assert cards[6].reason_label.text() == "Alarm 4"
+    assert cards[2].reason_label.text() == "+極限"
 
 
 # ---- AC-6 ----
@@ -88,7 +84,7 @@ def test_ac1_default_config_connects_and_mirrors_sim_state(e2e):
 def test_ac6_start_without_sim_then_reconnect_manually(e2e, config):
     port = free_port()
     app = e2e.start(port=port)
-    e2e.until(lambda: app.window.connection_label.text() == f"● 未連線 127.0.0.1:{port}")
+    e2e.until(lambda: f"未連線 127.0.0.1:{port}" in app.window.connection_label.text())
     assert app.window.isVisible()
     assert e2e.enabled_controls() == frozenset()
 
@@ -98,10 +94,10 @@ def test_ac6_start_without_sim_then_reconnect_manually(e2e, config):
         e2e.settle(1500)
         # 期間程式不自行重連：模擬器沒有任何連線
         assert [e for e in server.log.entries() if e.kind == "connect"] == []
-        assert app.window.connection_label.text() == f"● 未連線 127.0.0.1:{port}"
+        assert f"未連線 127.0.0.1:{port}" in app.window.connection_label.text()
 
         e2e.click(app.window.reconnect_button)
-        e2e.until(lambda: app.window.connection_label.text() == f"● 已連線 127.0.0.1:{port}")
+        e2e.until(lambda: f"已連線 127.0.0.1:{port}" in app.window.connection_label.text())
         e2e.until(lambda: app.snapshot is not None)
         assert len([e for e in server.log.entries() if e.kind == "connect"]) == 1
     finally:
@@ -121,7 +117,7 @@ def test_ac7_sim_stop_shows_disconnected_within_one_poll(e2e, config):
     e2e.sim.stop()
     e2e.until(
         lambda: (
-            app.window.connection_label.text().startswith("● 未連線")
+            "未連線" in app.window.connection_label.text()
             and app.tray.state == TrayState.DISCONNECTED
         )
     )

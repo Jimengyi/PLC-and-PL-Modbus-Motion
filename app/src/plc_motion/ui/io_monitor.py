@@ -3,20 +3,19 @@
 「數位」（Coil、Discrete Input）與「數值」（Holding Register）兩個分頁，每頁左欄 Read Only、
 右欄 Read Write；Visible = X 的點不顯示，列順序依 io_points.csv。
 
-- 每列：Check Status 色條、目前值（Boolean 燈號、U16 數字、Position 換算值＋單位）、
-  名稱（B 接點加註「(B)」）、Tag Name、PLC 位置（Description）、Check Status。
+- 每列：Check Status 細色條、名稱（B 接點加註「(B)」）、描述（Description 去掉開頭底線，
+  `_M22` 顯示為 `M22`）、目前值（Boolean 燈號＋ON／OFF、U16 數字、Position 換算值＋單位）。
 - Read Write 的點雙擊寫入：Boolean 切換，數值點開 `ValueDialog`。寫入走 worker 的
   `write_point`（Position 傳 raw）；鎖定或尚未取得 PLC 狀態時不寫入。
-- 右鍵選單設定 Check Status，立即經 `IoPointTable.save_check_status` 存檔；
-  「全部重設為 Unchecked」需確認。上方顯示各狀態數量（只算畫面上的點）與文字搜尋。
+- 右鍵選單設定 Check Status，立即經 `IoPointTable.save_check_status` 存檔；只改左側色條的
+  顏色，整列不上底色。上方顯示各狀態數量（只算畫面上的點）與名稱搜尋。
 """
 
-from PySide6.QtCore import QEvent, QPoint, Qt
-from PySide6.QtGui import QBrush, QColor, QIcon, QPixmap
+from PySide6.QtCore import QPoint, Qt
+from PySide6.QtGui import QBrush, QIcon, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
-    QGroupBox,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -37,21 +36,22 @@ from plc_motion.settings.loader import AppConfig
 from plc_motion.ui.jog_pad import format_value, lock_tooltip, segment_button
 from plc_motion.ui.theme import color
 from plc_motion.ui.value_dialog import ValueDialog
+from plc_motion.ui.widgets import Panel
 from plc_motion.worker import EngineStatus
 
 KINDS = (("digital", "數位（Coil / DI）"), ("numeric", "數值（Holding Register）"))
-STRIPE_COL, VALUE_COL, NAME_COL, TAG_COL, DESC_COL, STATUS_COL = range(6)
-_HEADERS = ("", "值", "名稱", "Tag Name", "PLC 位置", "Check Status")
+STRIPE_COL, NAME_COL, DESC_COL, VALUE_COL = range(4)
+_HEADERS = ("", "名稱", "描述", "值")
 _TAG_ROLE = Qt.ItemDataRole.UserRole
 _PLACEHOLDER = "—"
-_LAMP = "●"
-# 色條與數量統計用的醒目色；整列底色用 theme 的 check_<status>
+_LAMP_ON, _LAMP_OFF = "●  ON", "●  OFF"
+# Check Status 色條與數量統計的顏色
 _STRIPE_ROLE = {
     CheckStatus.OK: "ok",
     CheckStatus.NG: "fault",
     CheckStatus.UNCHECKED: "off",
     CheckStatus.RECHECK: "warn",
-    CheckStatus.IGNORE: "border",
+    CheckStatus.IGNORE: "border_strong",
 }
 
 
@@ -63,8 +63,9 @@ def row_name(point: IoPoint) -> str:
     return f"{point.label}(B)" if point.is_b_contact else point.label
 
 
-def _row_color(status: CheckStatus) -> QColor:
-    return color(f"check_{status.value.lower()}")
+def plc_location(point: IoPoint) -> str:
+    """PLC 位置欄文字：Description 去掉開頭底線（`_M22` → `M22`）。"""
+    return point.description.lstrip("_")
 
 
 class IoMonitorPage(QWidget):
@@ -77,8 +78,9 @@ class IoMonitorPage(QWidget):
         self._where: dict[str, tuple[QTableWidget, int]] = {}
         self.tables: dict[tuple[str, Access], QTableWidget] = {}
 
-        # ---- 上方列：分頁、搜尋、數量、重設 ----
+        # ---- 上方列：分頁、搜尋、數量 ----
         top = QHBoxLayout()
+        top.setSpacing(0)
         self.kind_buttons: dict[str, QPushButton] = {}
         group = QButtonGroup(self)
         for key, text in KINDS:
@@ -89,9 +91,9 @@ class IoMonitorPage(QWidget):
             self.kind_buttons[key] = button
         top.addSpacing(12)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("搜尋 Tag Name 或名稱")
+        self.search.setPlaceholderText("搜尋名稱")
         self.search.setClearButtonEnabled(True)
-        self.search.setFixedWidth(240)
+        self.search.setFixedWidth(280)
         self.search.textChanged.connect(self._apply_filter)
         top.addWidget(self.search)
         top.addStretch(1)
@@ -104,12 +106,9 @@ class IoMonitorPage(QWidget):
             label.setObjectName("checkCount")
             top.addWidget(swatch)
             top.addWidget(label)
-            top.addSpacing(8)
+            top.addSpacing(12)
             self._swatches[status] = swatch
             self.count_labels[status] = label
-        self.reset_button = QPushButton("全部重設為 Unchecked")
-        self.reset_button.clicked.connect(self._reset_all)
-        top.addWidget(self.reset_button)
 
         # ---- 兩個分頁 × 左右兩欄 ----
         self.pages = QStackedWidget()
@@ -117,14 +116,15 @@ class IoMonitorPage(QWidget):
             page = QWidget()
             columns = QHBoxLayout(page)
             columns.setContentsMargins(0, 0, 0, 0)
-            for access, title in (
-                (Access.READ_ONLY, "輸入（PLC → PC，唯讀）"),
-                (Access.READ_WRITE, "輸出（PC → PLC，雙擊寫入）"),
+            columns.setSpacing(12)
+            for access, title, subtitle in (
+                (Access.READ_ONLY, "輸入", "PLC → PC，唯讀"),
+                (Access.READ_WRITE, "輸出", "PC → PLC，雙擊寫入"),
             ):
-                box = QGroupBox(title)
-                box_layout = QVBoxLayout(box)
+                box = Panel(title, subtitle)
+                box.body_layout.setContentsMargins(8, 8, 8, 8)
                 table = self._make_table(access)
-                box_layout.addWidget(table)
+                box.body_layout.addWidget(table)
                 columns.addWidget(box, 1)
                 self.tables[(key, access)] = table
             self.pages.addWidget(page)
@@ -134,6 +134,8 @@ class IoMonitorPage(QWidget):
         self.lock_label.setWordWrap(True)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
         layout.addLayout(top)
         layout.addWidget(self.pages, 1)
         layout.addWidget(self.lock_label)
@@ -150,17 +152,19 @@ class IoMonitorPage(QWidget):
         table = QTableWidget(0, len(_HEADERS))
         table.setHorizontalHeaderLabels(_HEADERS)
         table.verticalHeader().setVisible(False)
+        table.verticalHeader().setDefaultSectionSize(34)
         table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         header = table.horizontalHeader()
-        header.setSectionResizeMode(STRIPE_COL, QHeaderView.ResizeMode.Fixed)
-        table.setColumnWidth(STRIPE_COL, 6)
-        table.setColumnWidth(VALUE_COL, 120)
-        table.setColumnWidth(NAME_COL, 170)
-        table.setColumnWidth(TAG_COL, 150)
-        table.setColumnWidth(DESC_COL, 90)
-        header.setStretchLastSection(True)
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(NAME_COL, QHeaderView.ResizeMode.Stretch)
+        table.setColumnWidth(STRIPE_COL, 8)
+        table.setColumnWidth(DESC_COL, 120)
+        table.setColumnWidth(VALUE_COL, 150)
+        table.horizontalHeaderItem(VALUE_COL).setTextAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
         table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         table.customContextMenuRequested.connect(
             lambda pos, t=table: self._show_context_menu(t, pos)
@@ -180,11 +184,9 @@ class IoMonitorPage(QWidget):
             table.insertRow(row)
             texts = {
                 STRIPE_COL: "",
-                VALUE_COL: _PLACEHOLDER,
                 NAME_COL: row_name(point),
-                TAG_COL: point.tag,
-                DESC_COL: point.description,
-                STATUS_COL: "",
+                DESC_COL: plc_location(point),
+                VALUE_COL: _PLACEHOLDER,
             }
             for col, text in texts.items():
                 item = QTableWidgetItem(text)
@@ -193,8 +195,6 @@ class IoMonitorPage(QWidget):
             table.item(row, NAME_COL).setData(_TAG_ROLE, point.tag)
             table.item(row, VALUE_COL).setTextAlignment(
                 Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                if point.sensor_type != SensorType.BOOLEAN
-                else Qt.AlignmentFlag.AlignCenter
             )
             self._where[point.tag] = (table, row)
             self._paint_status(point)
@@ -234,8 +234,8 @@ class IoMonitorPage(QWidget):
             return
         if point.sensor_type == SensorType.BOOLEAN:
             on = bool(self._snapshot.raw(point.tag))
-            item.setText(_LAMP)
-            item.setForeground(QBrush(color("ok" if on else "off")))
+            item.setText(_LAMP_ON if on else _LAMP_OFF)
+            item.setForeground(QBrush(color("ok" if on else "text_dim")))
         elif point.sensor_type == SensorType.POSITION:
             item.setText(format_value(self._snapshot.value(point.tag), point.scale, point.unit))
         else:
@@ -297,31 +297,12 @@ class IoMonitorPage(QWidget):
         self._paint_status(self._points.get(tag))
         self._update_counts()
 
-    def _reset_all(self) -> None:
-        answer = QMessageBox.question(
-            self,
-            "全部重設為 Unchecked",
-            "把 io_points.csv 全部點位的 Check Status 重設為 Unchecked？",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-        if answer != QMessageBox.StandardButton.Yes:
-            return
-        try:
-            self._points.reset_all_check_status()
-        except OSError as e:
-            QMessageBox.warning(self, "Check Status 存檔失敗", f"無法存檔：{e}")
-            return
-        self._repaint_statuses()
-
     def _paint_status(self, point: IoPoint) -> None:
         table, row = self._where[point.tag]
         status = point.check_status
-        table.item(row, STRIPE_COL).setBackground(QBrush(color(_STRIPE_ROLE[status])))
-        background = QBrush(_row_color(status))
-        for col in range(VALUE_COL, len(_HEADERS)):
-            table.item(row, col).setBackground(background)
-        table.item(row, STATUS_COL).setText(status.value)
+        item = table.item(row, STRIPE_COL)
+        item.setBackground(QBrush(color(_STRIPE_ROLE[status])))
+        item.setToolTip(f"Check Status：{status.value}")
 
     def _repaint_statuses(self) -> None:
         for tag in self._where:
@@ -337,21 +318,11 @@ class IoMonitorPage(QWidget):
             hex_color = color(_STRIPE_ROLE[status]).name()
             self._swatches[status].setText(f'<span style="color:{hex_color}">■</span>')
 
-    def changeEvent(self, event: QEvent) -> None:
-        super().changeEvent(event)
-        if event.type() in (QEvent.Type.StyleChange, QEvent.Type.PaletteChange) and hasattr(
-            self, "count_labels"
-        ):
-            # 主題切換：依新主題色重畫 Check Status 與燈號
-            self._repaint_statuses()
-            for tag in self._where:
-                self._paint_value(self._points.get(tag))
-
     # ---- 搜尋 ----
 
     def _apply_filter(self, text: str) -> None:
         query = text.strip().casefold()
         for tag, (table, row) in self._where.items():
             point = self._points.get(tag)
-            match = not query or query in tag.casefold() or query in point.label.casefold()
+            match = not query or query in row_name(point).casefold()
             table.setRowHidden(row, not match)

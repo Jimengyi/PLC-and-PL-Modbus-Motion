@@ -176,15 +176,14 @@ def run_main_and_inspect(config_dir: Path, inspect, extra_args=()) -> int:
     return main([*args, *extra_args])
 
 
-def test_saved_theme_is_applied_on_restart(qtbot, config_dir):
+def test_dark_theme_is_applied_on_start(qtbot, config_dir):
     app = QApplication.instance()
     original = app.styleSheet()
     try:
-        load_config(config_dir).device.save_theme("light")
         seen: list[str] = []
         code = run_main_and_inspect(config_dir, lambda w: seen.append(app.styleSheet()))
         assert code == 0
-        assert seen == [load_qss("light")]
+        assert seen == [load_qss()]
     finally:
         app.setStyleSheet(original)
 

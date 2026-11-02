@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox
 from plc_motion.engine import ResultKind
 from plc_motion.settings.csvio import BOM
 from plc_motion.settings.io_points import Access, CheckStatus
-from plc_motion.ui.io_monitor import NAME_COL, STATUS_COL
+from plc_motion.ui.io_monitor import NAME_COL, STRIPE_COL
 from plc_motion.ui.theme import color
 from plc_motion.ui.value_dialog import ValueDialog
 
@@ -110,7 +110,7 @@ def test_ac3_big5_io_points_shows_chinese_and_check_status_writes_utf8_bom(reque
 
     right_click_set_status(e2e, "Servo Motor 1", CheckStatus.OK)
     table, row = page.locate("Servo Motor 1")
-    assert table.item(row, STATUS_COL).text() == "OK"
+    assert table.item(row, STRIPE_COL).background().color() == color("ok")
 
     data = path.read_bytes()
     assert data.startswith(BOM)  # UTF-8 含 BOM：Excel 預設開啟即以 UTF-8 解讀
@@ -391,8 +391,7 @@ def test_ac29_set_ng_by_context_menu_saves_and_survives_restart(e2e):
 
     right_click_set_status(e2e, "Ready 1", CheckStatus.NG)
     table, row = page.locate("Ready 1")
-    assert table.item(row, STATUS_COL).text() == "NG"
-    assert table.item(row, NAME_COL).background().color() == color("check_ng")
+    assert table.item(row, STRIPE_COL).background().color() == color("fault")
     assert page.count_labels[CheckStatus.NG].text() == "NG 1"
     assert page.count_labels[CheckStatus.UNCHECKED].text() == f"Unchecked {unchecked - 1}"
 
@@ -403,5 +402,5 @@ def test_ac29_set_ng_by_context_menu_saves_and_survives_restart(e2e):
     app = e2e.restart()
     e2e.wait_connected()
     table, row = app.io_page.locate("Ready 1")
-    assert table.item(row, STATUS_COL).text() == "NG"
+    assert table.item(row, STRIPE_COL).background().color() == color("fault")
     assert app.io_page.count_labels[CheckStatus.NG].text() == "NG 1"

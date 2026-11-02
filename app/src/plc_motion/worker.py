@@ -5,6 +5,9 @@
 signal。一切在 worker 的事件迴圈裡依序執行，所以引擎命令必定落在某次 tick 之後、下一次
 read_all 之前；JOG 放開等命令不必等輪詢計時器，排到的下一個事件就執行。
 
+每輪輪詢量測 `read_all` 的耗時（依序送完所有讀取請求）與相鄰兩輪開始的間隔，以 `poll_timed` 發出，
+供狀態列判斷通訊品質與調整輪詢週期；連線後第一輪沒有間隔值。
+
 通訊中斷：`PlcCommError`（含 Modbus 例外回應）與任何未預期例外都視為中斷——關閉連線、
 `engine.on_disconnected()`、發 `connection_changed(False)`；不自動重連，等 `connect_plc()`。
 """
@@ -47,12 +50,20 @@ class EngineStatus:
     residual: tuple[ResidualInfo, ...]  # 尚未處理的殘留交握（FR-57）
 
 
+@dataclass(frozen=True)
+class PollTiming:
+    read_ms: float  # 本輪讀完全部位址花的時間
+    cycle_ms: float | None  # 與上一輪開始的間隔；連線後第一輪為 None
+    requests: int  # 本輪送出的讀取請求數
+
+
 class PlcWorker(QObject):
     # 跨執行緒 signal；接收端在 UI 執行緒時為 queued。
     # snapshot_ready 每次輪詢與每個命令之後發出；未連線時 Snapshot 為 None。
     snapshot_ready = Signal(object, object)  # (Snapshot | None, EngineStatus)
     engine_event = Signal(object)  # EngineEvent
     connection_changed = Signal(bool)
+    poll_timed = Signal(object)  # PollTiming，每次輪詢成功後發出
 
     _call = Signal(object)  # 內部：把命令轉派到 worker 執行緒
 
@@ -69,6 +80,7 @@ class PlcWorker(QObject):
         self._stopped = False
         self._snapshot: Snapshot | None = None
         self._prev: Snapshot | None = None  # 比較 Alarm Code 與 Emergency Stop 變化用
+        self._last_poll_start: float | None = None
         self._call.connect(self._run, Qt.ConnectionType.QueuedConnection)
 
     # ---- 命令方法（UI 入口） ----
@@ -151,11 +163,16 @@ class PlcWorker(QObject):
     def _poll(self) -> None:
         if not self._connected:
             return
+        start = time.perf_counter()
         snapshot = self._link.read_all()
+        read_ms = (time.perf_counter() - start) * 1000
+        last, self._last_poll_start = self._last_poll_start, start
+        cycle_ms = (start - last) * 1000 if last is not None else None
         self._snapshot = snapshot
         self._log_changes(snapshot)
         self._engine.tick(snapshot)
         self._emit_status()
+        self.poll_timed.emit(PollTiming(read_ms, cycle_ms, self._link.request_count))
 
     def _do_connect(self) -> None:
         if self._connected:
@@ -176,6 +193,7 @@ class PlcWorker(QObject):
         log.info("已連線到 PLC %s:%s", self._host, self._port)
         self._connected = True
         self._prev = None
+        self._last_poll_start = None
         self._engine.on_connected()
         self.connection_changed.emit(True)
         self._poll()  # 不等計時器：連線後第一次輪詢立即完成

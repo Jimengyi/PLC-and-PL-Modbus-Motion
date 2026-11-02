@@ -1,27 +1,25 @@
 """軸控頁（spec FR-28 ~ FR-33、FR-16 反灰、FR-27 UI 面）。
 
-上半部：七軸總覽（FR-28、FR-29）｜選定軸區塊（FR-30）＋全軸操作區（FR-31）。
-下半部 `bottom_layout`：步進鍵盤 `JogPad`（FR-32）與其下方的點位操作區｜點位表 `PointsPanel`
-（FR-34 ~ FR-36）。
+上排：七張位置卡（只顯示目前位置；該軸 Alarm 或觸發極限時上緣變紅並顯示原因），點卡片＝選定軸。
+下方三欄：選定軸（燈號、目標位置移動、JOG、單軸原點復歸、全軸操作）｜步進 `JogPad`｜點位
+`PointsPanel`。
 
-命令一律呼叫 worker 的命令方法；畫面只依 `snapshot_ready` 更新。鎖定（`EngineStatus.locked`）或
-尚未取得狀態時所有寫入控制項反灰，唯一例外是按住中的 JOG 鍵：JOG 按下本身就會造成鎖定，
-而反灰會視同放開，所以按住中的鍵只在該方向極限觸發時反灰。
+命令一律呼叫 worker 的命令方法；畫面只依 `snapshot_ready` 更新。目標位置移動、單軸與全部原點
+復歸先跳確認視窗；JOG、步進、Servo、Reset Alarm 不確認。鎖定（`EngineStatus.locked`）或尚未
+取得狀態時所有寫入控制項反灰，唯一例外是按住中的 JOG 鍵：JOG 按下本身就會造成鎖定，而反灰會
+視同放開，所以按住中的鍵只在該方向極限觸發時反灰。
 """
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QDoubleSpinBox,
     QFrame,
     QGridLayout,
-    QGroupBox,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
@@ -29,116 +27,88 @@ from PySide6.QtWidgets import (
 from plc_motion.codec import I32_MAX, decimals_for
 from plc_motion.plc.snapshot import AxisState, Snapshot
 from plc_motion.settings.loader import AppConfig
-from plc_motion.ui.jog_pad import (
-    SPEED_MAX,
-    SPEED_MIN,
-    JogButton,
-    JogPad,
-    format_value,
-    lock_tooltip,
-    segment_button,
-)
+from plc_motion.ui import confirm_dialog
+from plc_motion.ui.confirm_dialog import ConfirmRow
+from plc_motion.ui.jog_pad import LIFT_AXIS, JogButton, JogPad, format_value, lock_tooltip
 from plc_motion.ui.points_panel import PointsPanel
 from plc_motion.ui.theme import set_state
+from plc_motion.ui.widgets import (
+    Lamp,
+    Panel,
+    divider,
+    hint,
+    named_button,
+    plain_spinbox,
+    segment_button,
+    set_flag,
+)
 from plc_motion.worker import EngineStatus
 
-# 燈號：key → (顯示文字, 亮燈時的 state, 由 AxisState 取值)
+# 燈號：key → (顯示文字, 亮燈時的 state, 由 AxisState 取值)；依 3 × 3 排列
 _LAMPS = {
     "servo": ("Servo", "ok", lambda s: s.servo),
     "ready": ("Ready", "ok", lambda s: s.ready),
     "busy": ("Busy", "busy", lambda s: s.busy),
-    "request": ("Request", "busy", lambda s: s.request),
-    "reply": ("Reply", "busy", lambda s: s.reply),
     "home_finish": ("原點完成", "ok", lambda s: s.home_finish),
-    "pos_limit": ("+Limit(B)", "fault", lambda s: s.pos_limit_triggered),
     "home_sensor": ("Home Sensor", "ok", lambda s: s.home_sensor),
-    "neg_limit": ("−Limit(B)", "fault", lambda s: s.neg_limit_triggered),
+    "request": ("Request", "busy", lambda s: s.request),
+    "pos_limit": ("+Limit", "fault", lambda s: s.pos_limit_triggered),
+    "neg_limit": ("−Limit", "fault", lambda s: s.neg_limit_triggered),
+    "reply": ("Reply", "busy", lambda s: s.reply),
 }
-OVERVIEW_LAMPS = ("servo", "ready", "busy", "home_finish", "pos_limit", "home_sensor", "neg_limit")
 SELECTED_LAMPS = tuple(_LAMPS)
-
-# 總覽欄寬（表頭與每列共用）
-_COLUMNS = {
-    "check": 28,
-    "name": 56,
-    "position": 130,
-    "lamp": 30,
-    "alarm": 56,
-    "target": 130,
-}
+SELECTED_WIDTH, STEP_WIDTH = 396, 440
 _PLACEHOLDER = "—"
 
 
-def set_flag(widget: QWidget, name: str, value: bool) -> None:
-    """設定給 QSS 選擇器用的 bool property 並重新套用樣式。"""
-    if widget.property(name) is value:
-        return
-    widget.setProperty(name, value)
-    widget.style().unpolish(widget)
-    widget.style().polish(widget)
-    widget.update()
+def fault_reason(st: AxisState) -> str:
+    """位置卡的異常原因：Alarm 與極限；正常時為空字串。"""
+    parts = []
+    if st.alarm_code:
+        parts.append(f"Alarm {st.alarm_code}")
+    if st.pos_limit_triggered:
+        parts.append("+極限")
+    if st.neg_limit_triggered:
+        parts.append("−極限")
+    return "、".join(parts)
 
 
-class Lamp(QLabel):
-    """燈號：`●` 加文字，依 `state` property 著色（off 為暗）。"""
-
-    def __init__(self, text: str = "", lit_state: str = "ok", parent: QWidget | None = None):
-        super().__init__(f"● {text}".rstrip(), parent)
-        self.setObjectName("lamp")
-        self._lit_state = lit_state
-        set_state(self, "off")
-
-    def set_lit(self, on: bool) -> None:
-        set_state(self, self._lit_state if on else "off")
-
-
-class AxisRow(QFrame):
-    """總覽中的一軸；點選整列（勾選框與目標值以外的位置）發 `clicked`。"""
+class PositionCard(QFrame):
+    """一軸的位置卡；點選發 `clicked`。"""
 
     clicked = Signal(int)
 
     def __init__(self, config: AppConfig, n: int, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setObjectName("axisRow")
+        self.setObjectName("posCard")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.number = n
         point = config.points.axis_tag("Current Position", n)
         self.scale, self.unit = point.scale, point.unit
 
-        self.check = QCheckBox()
-        self.check.setToolTip("勾選此軸")
         self.name_label = QLabel(config.axes[n].name)
-        self.name_label.setObjectName("axisName")
+        self.name_label.setObjectName("posAxis")
+        unit = QLabel(self.unit or "")
+        unit.setObjectName("posUnit")
         self.position_label = QLabel(_PLACEHOLDER)
-        self.position_label.setObjectName("value")
+        self.position_label.setObjectName("posValue")
         self.position_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.lamps = {key: Lamp("", _LAMPS[key][1]) for key in OVERVIEW_LAMPS}
-        for key, lamp in self.lamps.items():
-            lamp.setToolTip(_LAMPS[key][0])
-            lamp.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.alarm_label = QLabel(_PLACEHOLDER)
-        self.alarm_label.setObjectName("value")
-        self.alarm_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.target = QDoubleSpinBox()
-        self.target.setDecimals(decimals_for(self.scale))
-        limit = I32_MAX / self.scale
-        self.target.setRange(-limit, limit)
-        self.target.setSuffix(f" {self.unit}")
-        self.target.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        self.target.setToolTip("目標值（絕對位置或相對移動量）")
+        self.reason_label = QLabel()
+        self.reason_label.setObjectName("posReason")
 
-        layout = QHBoxLayout(self)
-        layout.setContentsMargins(6, 3, 6, 3)
-        layout.setSpacing(4)
-        _add(layout, self.check, "check")
-        _add(layout, self.name_label, "name")
-        _add(layout, self.position_label, "position")
-        for lamp in self.lamps.values():
-            _add(layout, lamp, "lamp")
-        _add(layout, self.alarm_label, "alarm")
-        _add(layout, self.target, "target")
-        layout.addStretch(1)
+        top = QHBoxLayout()
+        top.addWidget(self.name_label)
+        top.addStretch(1)
+        top.addWidget(unit)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 8, 12, 6)
+        layout.setSpacing(2)
+        layout.addLayout(top)
+        layout.addWidget(self.position_label)
+        layout.addWidget(self.reason_label)
+        self.reason_label.setFixedHeight(18)
         set_state(self, "off")
         set_flag(self, "selected", False)
 
@@ -150,51 +120,13 @@ class AxisRow(QFrame):
     def update_state(self, st: AxisState | None) -> None:
         if st is None:
             self.position_label.setText(_PLACEHOLDER)
-            self.alarm_label.setText(_PLACEHOLDER)
-            for lamp in self.lamps.values():
-                lamp.set_lit(False)
+            self.reason_label.setText("")
             set_state(self, "off")
             return
-        self.position_label.setText(format_value(st.position, self.scale, self.unit))
-        self.alarm_label.setText(str(st.alarm_code))
-        for key, lamp in self.lamps.items():
-            lamp.set_lit(bool(_LAMPS[key][2](st)))
-        set_state(self, "fault" if st.alarm_code else "ok")
-
-
-def _add(layout: QHBoxLayout, widget: QWidget, column: str) -> None:
-    widget.setFixedWidth(_COLUMNS[column])
-    layout.addWidget(widget)
-
-
-def _overview_header() -> QWidget:
-    header = QFrame()
-    header.setObjectName("axisHeader")
-    layout = QHBoxLayout(header)
-    layout.setContentsMargins(6, 0, 6, 0)
-    layout.setSpacing(4)
-    titles = [("勾選", "check"), ("軸", "name"), ("目前位置", "position")]
-    titles += [(_short_lamp_title(k), "lamp") for k in OVERVIEW_LAMPS]
-    titles += [("Alarm", "alarm"), ("目標值", "target")]
-    for text, column in titles:
-        label = QLabel(text)
-        label.setObjectName("columnTitle")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        _add(layout, label, column)
-    layout.addStretch(1)
-    return header
-
-
-def _short_lamp_title(key: str) -> str:
-    return {
-        "servo": "Svo",
-        "ready": "Rdy",
-        "busy": "Bsy",
-        "home_finish": "原點",
-        "pos_limit": "+L",
-        "home_sensor": "HS",
-        "neg_limit": "−L",
-    }[key]
+        self.position_label.setText(format_value(st.position, self.scale))
+        reason = fault_reason(st)
+        self.reason_label.setText(reason)
+        set_state(self, "fault" if reason else "ok")
 
 
 class AxisPage(QWidget):
@@ -207,33 +139,31 @@ class AxisPage(QWidget):
         self.selected_axis = min(config.axes)
         self._jog_axis = self.selected_axis  # 按下時的軸：放開送同一軸
 
-        overview = self._build_overview()
+        cards = QHBoxLayout()
+        cards.setSpacing(8)
+        self.cards: dict[int, PositionCard] = {}
+        for n in sorted(config.axes):
+            card = PositionCard(config, n)
+            card.clicked.connect(self.select_axis)
+            cards.addWidget(card, 1)
+            self.cards[n] = card
+
         selected = self._build_selected()
-        all_axes = self._build_all_axes()
+        selected.setFixedWidth(SELECTED_WIDTH)
         self.jog_pad = JogPad(config, worker)
+        self.jog_pad.setFixedWidth(STEP_WIDTH)
         self.points_panel = PointsPanel(config, worker)
 
-        right = QVBoxLayout()
-        right.addWidget(selected)
-        right.addWidget(all_axes)
-        right.addStretch(1)
-        top = QHBoxLayout()
-        top.addWidget(overview, 3)
-        top.addLayout(right, 2)
-
-        # 左欄：步進鍵盤＋點位操作區；右欄：點位表（佔滿剩餘寬度，讓七軸座標欄都看得到）
-        left = QVBoxLayout()
-        left.addWidget(self.jog_pad, 0)
-        left.addWidget(self.points_panel.take_ops_box(), 0)
-        left.addStretch(1)
         self.bottom_layout = QHBoxLayout()
-        self.bottom_layout.addLayout(left, 0)
+        self.bottom_layout.setSpacing(12)
+        self.bottom_layout.addWidget(selected)
+        self.bottom_layout.addWidget(self.jog_pad)
         self.bottom_layout.addWidget(self.points_panel, 1)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(12, 12, 12, 12)
-        layout.setSpacing(10)
-        layout.addLayout(top)
+        layout.setSpacing(12)
+        layout.addLayout(cards)
         layout.addLayout(self.bottom_layout, 1)
 
         worker.snapshot_ready.connect(self.on_snapshot)
@@ -241,142 +171,132 @@ class AxisPage(QWidget):
 
     # ---- 版面 ----
 
-    def _build_overview(self) -> QGroupBox:
-        box = QGroupBox("七軸總覽（點選一列為選定軸）")
-        layout = QVBoxLayout(box)
-        layout.setSpacing(3)
-        layout.addWidget(_overview_header())
-        self.rows: dict[int, AxisRow] = {}
-        for n in sorted(self._config.axes):
-            row = AxisRow(self._config, n)
-            row.clicked.connect(self.select_axis)
-            row.check.toggled.connect(self._update_controls)
-            layout.addWidget(row)
-            self.rows[n] = row
-
-        self.absolute_button = segment_button("絕對")
-        self.relative_button = segment_button("相對")
-        self.absolute_button.setChecked(True)
-        mode = QButtonGroup(box)
-        mode.addButton(self.absolute_button)
-        mode.addButton(self.relative_button)
-        self.move_speed = QSpinBox()
-        self.move_speed.setRange(SPEED_MIN, SPEED_MAX)
-        self.move_speed.setSuffix(" %")
-        self.move_speed.setValue(min(a.default_speed for a in self._config.axes.values()))
-        self.move_button = QPushButton("▶ 執行勾選軸移動")
-        self.move_button.clicked.connect(self._move_checked)
-        self.home_checked_button = QPushButton("⌂ 勾選軸原點復歸")
-        self.home_checked_button.clicked.connect(lambda: self._worker.home(self._checked_axes()))
-
-        controls = QHBoxLayout()
-        controls.addWidget(self.absolute_button)
-        controls.addWidget(self.relative_button)
-        controls.addSpacing(16)
-        controls.addWidget(QLabel("速度"))
-        controls.addWidget(self.move_speed)
-        controls.addStretch(1)
-        controls.addWidget(self.move_button)
-        controls.addWidget(self.home_checked_button)
-        layout.addSpacing(6)
-        layout.addLayout(controls)
-        layout.addStretch(1)
-        return box
-
-    def _build_selected(self) -> QGroupBox:
-        box = QGroupBox("選定軸")
-        self.selected_title = QLabel()
-        self.selected_title.setObjectName("selectedTitle")
+    def _build_selected(self) -> Panel:
+        panel = Panel("", "選定軸")
+        self.selected_title = panel.title_label
         self.selected_state = QLabel()
-        self.selected_state.setObjectName("lamp")
-        title = QHBoxLayout()
-        title.addWidget(self.selected_title)
-        title.addWidget(self.selected_state)
-        title.addStretch(1)
+        self.selected_state.setObjectName("stateChip")
+        panel.header_layout.addWidget(self.selected_state)
+        body = panel.body_layout
 
         lamps = QGridLayout()
-        lamps.setHorizontalSpacing(14)
+        lamps.setHorizontalSpacing(6)
+        lamps.setVerticalSpacing(6)
         self.selected_lamps: dict[str, Lamp] = {}
         for i, key in enumerate(SELECTED_LAMPS):
             text, lit, _ = _LAMPS[key]
             lamp = Lamp(text, lit)
             lamps.addWidget(lamp, i // 3, i % 3)
             self.selected_lamps[key] = lamp
+        body.addLayout(lamps)
 
         self.plc_action_label = QLabel(_PLACEHOLDER)
         self.plc_action_label.setObjectName("value")
         self.alarm_code_label = QLabel(_PLACEHOLDER)
         self.alarm_code_label.setObjectName("value")
         codes = QHBoxLayout()
-        codes.addWidget(QLabel("PLC Action Code"))
+        codes.addWidget(hint("PLC Action Code"))
         codes.addWidget(self.plc_action_label)
-        codes.addSpacing(20)
-        codes.addWidget(QLabel("Alarm Code"))
+        codes.addSpacing(16)
+        codes.addWidget(hint("Alarm Code"))
         codes.addWidget(self.alarm_code_label)
         codes.addStretch(1)
+        body.addLayout(codes)
 
-        self.jog_minus = JogButton("◀ JOG −")
-        self.jog_plus = JogButton("JOG ＋ ▶")
+        # 目標位置：單軸絕對／相對移動
+        self.absolute_button = segment_button("絕對")
+        self.relative_button = segment_button("相對")
+        self.absolute_button.setChecked(True)
+        mode = QButtonGroup(panel)
+        mode.addButton(self.absolute_button)
+        mode.addButton(self.relative_button)
+        self.target = QDoubleSpinBox()
+        plain_spinbox(self.target)
+        self.target.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        self.target.setToolTip("目標值（絕對位置或相對移動量）")
+        self.move_button = named_button("移動", "primary")
+        self.move_button.clicked.connect(self._move_selected)
+        target_row = QHBoxLayout()
+        target_row.setSpacing(0)
+        target_row.addWidget(self.absolute_button)
+        target_row.addWidget(self.relative_button)
+        target_row.addSpacing(8)
+        target_row.addWidget(self.target, 1)
+        target_row.addSpacing(8)
+        target_row.addWidget(self.move_button)
+        body.addWidget(hint("目標位置"))
+        body.addLayout(target_row)
+
+        self.jog_minus = JogButton("◀  JOG −")
+        self.jog_plus = JogButton("JOG +  ▶")
+        jog = QHBoxLayout()
         for button, direction in ((self.jog_minus, -1), (self.jog_plus, +1)):
-            button.setMinimumHeight(44)
+            button.setObjectName("big")
             button.jog_pressed.connect(lambda d=direction: self._jog_press(d))
             button.jog_released.connect(lambda d=direction: self._jog_release(d))
+            jog.addWidget(button, 1)
+        body.addWidget(hint("JOG：按住移動，放開即停（速度與步進共用）"))
+        body.addLayout(jog)
         self.home_one_button = QPushButton("⌂ 單軸原點復歸")
-        self.home_one_button.clicked.connect(lambda: self._worker.home([self.selected_axis]))
-        jog = QHBoxLayout()
-        jog.addWidget(self.jog_minus, 1)
-        jog.addWidget(self.jog_plus, 1)
-        jog.addWidget(self.home_one_button)
+        self.home_one_button.clicked.connect(self._home_selected)
+        body.addWidget(self.home_one_button)
+
+        # 全軸操作
+        body.addWidget(divider())
+        body.addWidget(hint("全軸操作"))
+        self.servo_on_button = QPushButton("Servo 全部 ON")
+        self.servo_on_button.clicked.connect(lambda: self._worker.servo_all(True))
+        self.servo_off_button = QPushButton("Servo 全部 OFF")
+        self.servo_off_button.clicked.connect(lambda: self._worker.servo_all(False))
+        self.reset_button = QPushButton("Reset Alarm")
+        self.reset_button.clicked.connect(self._worker.reset_all)
+        servo = QHBoxLayout()
+        servo.setSpacing(6)
+        for button in (self.servo_on_button, self.servo_off_button, self.reset_button):
+            button.setObjectName("compact")
+            servo.addWidget(button, 1)
+        body.addLayout(servo)
+        self.home_all_button = QPushButton("⌂ 全部原點復歸")
+        self.home_all_button.clicked.connect(self._home_all)
+        home_all = QHBoxLayout()
+        home_all.addWidget(self.home_all_button)
+        home_all.addWidget(hint("先做升降軸，完成後其餘軸同時做"))
+        home_all.addStretch(1)
+        body.addLayout(home_all)
+
+        self.home_finish_lamps: dict[int, Lamp] = {}
+        finished = QGridLayout()
+        finished.setHorizontalSpacing(6)
+        finished.setVerticalSpacing(6)
+        finished.addWidget(hint("原點完成"), 0, 0)
+        for i, n in enumerate(sorted(self._config.axes), start=1):
+            lamp = Lamp(self._config.axes[n].name, "ok")
+            finished.addWidget(lamp, i // 4, i % 4)
+            self.home_finish_lamps[n] = lamp
+        body.addLayout(finished)
 
         self.lock_label = QLabel()
         self.lock_label.setObjectName("lockHint")
         self.lock_label.setWordWrap(True)
-
-        layout = QVBoxLayout(box)
-        layout.addLayout(title)
-        layout.addLayout(lamps)
-        layout.addLayout(codes)
-        layout.addWidget(QLabel("JOG：按住移動，放開即停（速度與步進共用）"))
-        layout.addLayout(jog)
-        layout.addWidget(self.lock_label)
-        return box
-
-    def _build_all_axes(self) -> QGroupBox:
-        box = QGroupBox("全軸操作")
-        self.home_all_button = QPushButton("⌂ 全部原點復歸")
-        self.home_all_button.clicked.connect(lambda: self._worker.home(sorted(self._config.axes)))
-        note = QLabel("先做升降軸，完成後其餘軸同時做")
-        note.setObjectName("hint")
-        top = QHBoxLayout()
-        top.addWidget(self.home_all_button)
-        top.addWidget(note)
-        top.addStretch(1)
-
-        self.home_finish_lamps: dict[int, Lamp] = {}
-        lamps = QHBoxLayout()
-        lamps.addWidget(QLabel("原點復歸完成"))
-        for n in sorted(self._config.axes):
-            lamp = Lamp(self._config.axes[n].name, "ok")
-            lamps.addWidget(lamp)
-            self.home_finish_lamps[n] = lamp
-        lamps.addStretch(1)
-
-        layout = QVBoxLayout(box)
-        layout.addLayout(top)
-        layout.addLayout(lamps)
-        return box
+        body.addWidget(self.lock_label)
+        body.addStretch(1)
+        return panel
 
     # ---- 選定軸 ----
 
     def select_axis(self, n: int) -> None:
-        # 換軸前放開按住中的 JOG（正常操作下按住時無法點別列，保險起見）
+        # 換軸前放開按住中的 JOG（正常操作下按住時無法點別張卡，保險起見）
         self.jog_minus.release()
         self.jog_plus.release()
         self.selected_axis = n
-        for m, row in self.rows.items():
-            set_flag(row, "selected", m == n)
-        name = self._config.axes[n].name
-        self.selected_title.setText(f"{name}（第 {n} 軸）")
+        for m, card in self.cards.items():
+            set_flag(card, "selected", m == n)
+        self.selected_title.setText(f"{self._config.axes[n].name} 軸")
+        point = self._config.points.axis_tag("Current Position", n)
+        limit = I32_MAX / point.scale
+        self.target.setDecimals(decimals_for(point.scale))
+        self.target.setRange(-limit, limit)
+        self.target.setSuffix(f" {point.unit}")
         self._update_selected()
         self._update_controls()
 
@@ -405,13 +325,75 @@ class AxisPage(QWidget):
 
     # ---- 命令 ----
 
-    def _checked_axes(self) -> list[int]:
-        return [n for n, row in self.rows.items() if row.check.isChecked()]
+    def _axis_text(self, n: int, value: float) -> str:
+        point = self._config.points.axis_tag("Current Position", n)
+        return format_value(value, point.scale)
 
-    def _move_checked(self) -> None:
-        targets = {n: self.rows[n].target.value() for n in self._checked_axes()}
-        if targets:
-            self._worker.move(targets, self.relative_button.isChecked(), self.move_speed.value())
+    def _unit(self, n: int) -> str:
+        return self._config.points.axis_tag("Current Position", n).unit or ""
+
+    def _move_selected(self) -> None:
+        if self._snapshot is None:
+            return
+        n = self.selected_axis
+        value = self.target.value()
+        relative = self.relative_button.isChecked()
+        speed = self.jog_pad.speed.value()
+        current = self._snapshot.axis(n).position
+        target = current + value if relative else value
+        name = self._config.axes[n].name
+        if relative:
+            mode = f"相對（{value:+.{self.target.decimals()}f} {self._unit(n)}）"
+        else:
+            mode = "絕對"
+        if not confirm_dialog.confirm(
+            self,
+            f"確認移動 {name} 軸",
+            lines=(f"模式：{mode}　速度：{speed} %",),
+            rows=(
+                ConfirmRow(
+                    name, self._axis_text(n, current), self._axis_text(n, target), self._unit(n)
+                ),
+            ),
+            ok_text="▶ 確認移動",
+        ):
+            return
+        if lock_tooltip(self._snapshot, self._status) is None:
+            self._worker.move({n: value}, relative, speed)
+
+    def _home_selected(self) -> None:
+        n = self.selected_axis
+        name = self._config.axes[n].name
+        lines = [f"{name} 軸會移動到原點。"]
+        if self._snapshot is not None:
+            position = self._axis_text(n, self._snapshot.axis(n).position)
+            lines.append(f"目前位置 {position} {self._unit(n)}")
+        if (
+            confirm_dialog.confirm(
+                self, f"確認 {name} 軸原點復歸", lines=tuple(lines), ok_text="⌂ 確認原點復歸"
+            )
+            and lock_tooltip(self._snapshot, self._status) is None
+        ):
+            self._worker.home([n])
+
+    def _home_all(self) -> None:
+        axes = sorted(self._config.axes)
+        others = "、".join(self._config.axes[n].name for n in axes if n != LIFT_AXIS)
+        if (
+            confirm_dialog.confirm(
+                self,
+                "確認全部原點復歸",
+                lines=(
+                    "七軸都會移動到原點：",
+                    "1. 先做升降軸",
+                    f"2. 升降軸完成後，{others} 同時做",
+                ),
+                note="確認機台周圍淨空再執行。",
+                ok_text="⌂ 確認全部原點復歸",
+            )
+            and lock_tooltip(self._snapshot, self._status) is None
+        ):
+            self._worker.home(axes)
 
     def _jog_press(self, direction: int) -> None:
         self._jog_axis = self.selected_axis
@@ -427,8 +409,8 @@ class AxisPage(QWidget):
     def on_snapshot(self, snapshot: Snapshot | None, status: EngineStatus) -> None:
         self._snapshot = snapshot
         self._status = status
-        for n, row in self.rows.items():
-            row.update_state(snapshot.axis(n) if snapshot is not None else None)
+        for n, card in self.cards.items():
+            card.update_state(snapshot.axis(n) if snapshot is not None else None)
         for n, lamp in self.home_finish_lamps.items():
             lamp.set_lit(snapshot is not None and snapshot.axis(n).home_finish)
         self._update_selected()
@@ -438,12 +420,14 @@ class AxisPage(QWidget):
         tip = lock_tooltip(self._snapshot, self._status)
         self.lock_label.setText(tip.replace("\n", " ") if tip else "")
 
-        checked = bool(self._checked_axes())
-        for button in (self.move_button, self.home_checked_button):
-            reason = tip if tip is not None else (None if checked else "請先勾選軸")
-            button.setEnabled(reason is None)
-            button.setToolTip(reason or "")
-        for button in (self.home_one_button, self.home_all_button):
+        for button in (
+            self.move_button,
+            self.home_one_button,
+            self.home_all_button,
+            self.servo_on_button,
+            self.servo_off_button,
+            self.reset_button,
+        ):
             button.setEnabled(tip is None)
             button.setToolTip(tip or "")
 

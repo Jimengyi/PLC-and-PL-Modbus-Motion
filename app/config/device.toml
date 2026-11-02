@@ -20,7 +20,3 @@ reset_alarm_pulse_ms = 500
 [log]
 # 日誌保留天數
 retention_days = 30
-
-[ui]
-# 介面主題：dark 或 light
-theme = "dark"

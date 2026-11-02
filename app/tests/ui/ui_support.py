@@ -29,6 +29,7 @@ class FakeWorker(QObject):
     snapshot_ready = Signal(object, object)
     engine_event = Signal(object)
     connection_changed = Signal(bool)
+    poll_timed = Signal(object)
 
     def __init__(self):
         super().__init__()

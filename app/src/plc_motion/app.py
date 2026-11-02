@@ -6,7 +6,7 @@
 只覆蓋本次連線，不寫回 device.toml。
 
 啟動順序：單一實例檢查 → 日誌（先用預設保留天數，設定檔讀到後改用設定值）→ 載入設定
-（錯誤時列出全部錯誤後以結束碼 1 結束）→ 主題 → MotionApp（worker、主視窗、系統匣）。
+（錯誤時列出全部錯誤後以結束碼 1 結束）→ 套用主題 → MotionApp（worker、主視窗、系統匣）。
 """
 
 import argparse
@@ -24,7 +24,7 @@ from plc_motion.settings.loader import AppConfig
 from plc_motion.ui.axis_page import AxisPage
 from plc_motion.ui.dialogs import ConfigErrorDialog, ExceptionReporter
 from plc_motion.ui.io_monitor import IoMonitorPage
-from plc_motion.ui.main_window import MainWindow
+from plc_motion.ui.main_window import MainWindow, axis_icon, io_icon
 from plc_motion.ui.single_instance import SingleInstance
 from plc_motion.ui.theme import apply_theme
 from plc_motion.ui.tray import APP_TITLE, TrayController
@@ -53,9 +53,9 @@ class MotionApp(QObject):
         # start_worker 的自動連線排在事件迴圈：以下接線都在回到事件迴圈之前完成
         self.window = MainWindow(config, self.worker, f"{host}:{port}")
         self.axis_page = AxisPage(config, self.worker)
-        self.window.add_page("軸控", None, self.axis_page)
+        self.window.add_page("軸控", axis_icon(), self.axis_page)
         self.io_page = IoMonitorPage(config, self.worker)
-        self.window.add_page("IO Monitor", None, self.io_page)
+        self.window.add_page("IO Monitor", io_icon(), self.io_page)
         self.tray = TrayController(sorted(config.axes))
         self.worker.snapshot_ready.connect(self._on_snapshot)
         self.worker.snapshot_ready.connect(self.tray.update)
@@ -138,7 +138,7 @@ def main(argv: list[str] | None = None) -> int:
 
         if config.device.log_retention_days != DEFAULT_LOG_RETENTION_DAYS:
             setup_logging(logs_dir, config.device.log_retention_days)
-        apply_theme(app, config.device.theme)
+        apply_theme(app)
         host = args.host or config.device.host
         port = args.port or config.device.port
         log.info("連線目標：%s:%s", host, port)

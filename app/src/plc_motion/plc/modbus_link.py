@@ -43,6 +43,11 @@ class ModbusLink(PlcPort):
         self._client.close()
 
     @property
+    def request_count(self) -> int:
+        """`read_all` 一輪送出的讀取請求數（合併後的區塊數）。"""
+        return len(self._blocks)
+
+    @property
     def connected(self) -> bool:
         return self._connected and self._client.connected
 

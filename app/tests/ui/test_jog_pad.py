@@ -66,14 +66,47 @@ def test_each_click_sends_one_step(pad, fake_worker, make_snapshot):
     assert len(steps(fake_worker)) == 3
 
 
-def test_distance_label_shows_current_step(pad):
+def test_presets_fill_each_axis_distance_field(pad):
     pad.distance_buttons["long"].click()
-    assert pad.distance_labels[1].text() == "10.0000 mm"
-    assert pad.distance_labels[4].text() == "5.00 deg"
-    assert pad.distance_labels[7].text() == "10.00 mm"
+    assert pad.distance_fields[1].text() == "10.0000"
+    assert pad.distance_fields[4].text() == "5.00"
+    assert pad.distance_fields[7].text() == "10.00"
+    assert pad.distance_key() == "long"
     pad.distance_buttons["short"].click()
-    assert pad.distance_labels[1].text() == "0.1000 mm"
-    assert pad.distance_labels[4].text() == "0.05 deg"
+    assert pad.distance_fields[1].text() == "0.1000"
+    assert pad.distance_fields[4].text() == "0.05"
+    assert pad.distance_key() == "short"
+
+
+def test_typed_distance_switches_to_custom_and_is_used(pad, qtbot, fake_worker, make_snapshot):
+    """OP 直接輸入步距：Enter 套用、切到「自訂」，步進用輸入的值。"""
+    fake_worker.snapshot_ready.emit(make_snapshot(ALL_HOMED), status())
+    pad.speed.setValue(20)
+    field = pad.distance_fields[2]
+    field.setFocus()
+    field.selectAll()
+    qtbot.keyClicks(field, "2.5")
+    assert pad.distance_key() == "short"  # 還沒按 Enter：不套用
+    qtbot.keyClick(field, Qt.Key.Key_Return)
+    assert field.value() == 2.5
+    assert pad.distance_key() == "custom"
+    assert pad.distance_buttons["custom"].isChecked()
+    assert not pad.distance_buttons["custom"].isEnabled()  # 自訂不能直接點
+    pad.step_buttons[(2, -1)].click()
+    pad.step_buttons[(1, +1)].click()  # 其他軸維持原本的短步距
+    assert steps(fake_worker) == [("step", 2, -2.5, 20), ("step", 1, 0.1, 20)]
+    pad.distance_buttons["medium"].click()  # 再選預設：七軸全部回到中步距
+    assert pad.distance_fields[2].value() == 1.0 and pad.distance_key() == "medium"
+
+
+def test_distance_field_range_is_resolution_to_soft_limit_travel(pad):
+    x, rx = pad.distance_fields[1], pad.distance_fields[4]
+    assert x.minimum() == pytest.approx(0.0001) and x.maximum() == pytest.approx(200.0)
+    assert rx.minimum() == pytest.approx(0.01)
+    x.setValue(999)
+    assert x.value() == pytest.approx(200.0)  # 超過行程：夾到上限
+    x.setValue(0)
+    assert x.value() == pytest.approx(0.0001)  # 不能是 0
 
 
 def test_step_keys_disabled_until_axis_homed(pad, fake_worker, make_snapshot):

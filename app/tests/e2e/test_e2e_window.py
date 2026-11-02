@@ -27,7 +27,6 @@ from plc_motion.app import main
 from plc_motion.engine import ResultKind
 from plc_motion.logging_setup import log_file_name
 from plc_motion.settings.csvio import BOM
-from plc_motion.ui import theme
 from plc_motion.ui.dialogs import ConfigErrorDialog
 from plc_motion.ui.main_window import MainWindow
 from plc_motion.ui.theme import load_qss
@@ -149,9 +148,8 @@ def run_main_with_config_errors(config_dir: Path) -> tuple[int, list[str]]:
 @pytest.fixture
 def restore_theme():
     app = QApplication.instance()
-    sheet, name = app.styleSheet(), theme.current_theme()
+    sheet = app.styleSheet()
     yield
-    theme.apply_theme(app, name)
     app.setStyleSheet(sheet)
 
 
@@ -484,32 +482,22 @@ def test_ac31_alarm_while_in_tray_notifies_and_turns_icon_fault(e2e):
 # ---- AC-32：主題 ----
 
 
-def test_ac32_light_theme_persists_and_only_theme_value_changes(
+def test_ac32_dark_only_and_legacy_light_setting_ignored(
     e2e, e2e_config_dir, no_running_instance, restore_theme
 ):
-    qapp = QApplication.instance()
-    theme.apply_theme(qapp, "dark")
-    started(e2e)
+    """只有深色主題：畫面上沒有主題切換；device.toml 留著舊的 theme = "light" 也照常以深色啟動。"""
     path = e2e_config_dir / "device.toml"
-    before = path.read_bytes().decode("utf-8")
-    window = e2e.app.window
-    assert window.theme_button.text() == "切換淺色"
-
-    e2e.click(window.theme_button)
-    assert qapp.styleSheet() == load_qss("light")
-    after = path.read_bytes().decode("utf-8")
-    assert after == before.replace('theme = "dark"', 'theme = "light"')
-    assert after != before
-    e2e.close_all()
-
-    theme.apply_theme(qapp, "dark")  # 重新啟動前回到深色，確認是啟動時套用
-    seen: list[tuple[str, str]] = []
+    text = path.read_bytes().decode("utf-8")
+    path.write_bytes((text.rstrip() + '\n\n[ui]\ntheme = "light"\n').encode("utf-8"))
+    qapp = QApplication.instance()
+    qapp.setStyleSheet("")
+    seen: list[tuple[str, bool]] = []
     code = run_main(
         ["--config", str(e2e_config_dir), "--host", "127.0.0.1", "--port", str(e2e.sim.port)],
-        lambda w: seen.append((qapp.styleSheet(), w.theme_button.text())),
+        lambda w: seen.append((qapp.styleSheet(), hasattr(w, "theme_button"))),
     )
     assert code == 0
-    assert seen == [(load_qss("light"), "切換深色")]
+    assert seen == [(load_qss(), False)]
 
 
 # ---- AC-33：單一實例（兩個真實程序） ----
@@ -717,7 +705,7 @@ def test_ac36_copied_package_runs_without_uv_and_mirrors_sim(
         processes.append(proc)
         hwnd = wait_for(lambda: other_process_windows(MAIN_TITLE), timeout=60)[0]
         wait_for(lambda: server.log.read_count() > 3)
-        expected = ["● 已連線 127.0.0.1:5020", "12.3456 mm", "-7.5000 mm", "4.25 deg", "55.55 mm"]
+        expected = ["已連線 127.0.0.1:5020", "12.3456", "-7.5000", "4.25", "55.55"]
         texts = wait_for(
             lambda: (t := window_texts(hwnd)) and all(e in t for e in expected) and t,
             timeout=30,

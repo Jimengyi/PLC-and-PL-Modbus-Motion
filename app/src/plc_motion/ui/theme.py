@@ -1,85 +1,64 @@
-"""深色／淺色主題（spec FR-45）：QSS 檔與給程式碼著色用的語意色。
+"""介面主題（spec FR-45）：工業風深色 QSS 與給程式碼著色用的語意色。
 
-QSS 在 `themes/<name>.qss`。控制項以 dynamic property `state` 標示語意狀態，QSS 依此著色：
+只有一套深色主題。顏色取向依 ISA-101 高效能 HMI：中性灰底，顏色只留給狀態——
+ok／busy（運轉）、warn（警告）、fault（異常）；off 為未連線／無資料／未亮燈。
 
-    ok（正常）、busy（動作中）、fault（異常）、off（未連線／無資料）
-
+QSS 在 `themes/dark.qss`。控制項以 dynamic property `state` 標示語意狀態，QSS 依此著色；
 改了 `state` 之後呼叫 `set_state(widget, state)` 讓樣式重新套用。
-燈號、表格列底色等以程式繪製者用 `color(role)` 取目前主題的色值；Check Status 五態
-以 `check_<status 小寫>` 為 role（例：`check_ng`）。
+燈號、圖表等以程式繪製者用 `color(role)` 取色值。
 """
 
 from functools import cache
 from importlib import resources
 
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QFont
 from PySide6.QtWidgets import QApplication, QWidget
 
-THEMES = ("dark", "light")
+FONT_FAMILIES = ("Bahnschrift", "Microsoft JhengHei UI", "Segoe UI")
 
-_COLORS = {
-    "dark": {
-        "bg": "#1d1d1f",
-        "panel": "#2d2d2f",
-        "panel_alt": "#3d3d3f",
-        "border": "#48484a",
-        "text": "#f5f5f7",
-        "text_dim": "#98989d",
-        "accent": "#0a84ff",
-        "ok": "#32d74b",
-        "busy": "#0a84ff",
-        "fault": "#ff453a",
-        "warn": "#ffb340",
-        "off": "#636366",
-        "check_ok": "#1f5130",
-        "check_ng": "#6b2420",
-        "check_unchecked": "#2d2d2f",
-        "check_recheck": "#6b4f12",
-        "check_ignore": "#3a3a52",
-    },
-    "light": {
-        "bg": "#f5f5f7",
-        "panel": "#ffffff",
-        "panel_alt": "#e5e5e7",
-        "border": "#c7c7cc",
-        "text": "#1d1d1f",
-        "text_dim": "#6e6e73",
-        "accent": "#0071e3",
-        "ok": "#1f9d3a",
-        "busy": "#0071e3",
-        "fault": "#d70015",
-        "warn": "#b25000",
-        "off": "#8e8e93",
-        "check_ok": "#d4f5dc",
-        "check_ng": "#ffd6d3",
-        "check_unchecked": "#ffffff",
-        "check_recheck": "#ffecc2",
-        "check_ignore": "#e3e3f0",
-    },
+# 與 themes/dark.qss 一致
+COLORS = {
+    "bg": "#16191d",  # 視窗底色
+    "panel": "#1f2328",  # 面板
+    "panel_alt": "#2a2f36",  # 面板標題列、表頭
+    "inset": "#0f1215",  # 數值顯示、輸入框、表格內容
+    "border": "#3a4048",
+    "border_strong": "#4b525c",
+    "text": "#e6e8eb",
+    "text_dim": "#8b939e",
+    "accent": "#2f9bff",  # 選取、主要按鈕
+    "accent_dim": "#173a5c",  # 選取底色
+    "ok": "#3ccf63",
+    "busy": "#2f9bff",
+    "warn": "#f2b21b",
+    "fault": "#ff4b3e",
+    "off": "#464d57",
+    "button": "#2b3138",
+    # 點位表超出軟體極限的格子底色
+    "check_ng": "#5a211d",
 }
-
-_current = "dark"
 
 
 @cache
-def load_qss(name: str) -> str:
-    if name not in THEMES:
-        raise ValueError(f"未知的主題：{name}")
-    return resources.files("plc_motion.ui").joinpath("themes", f"{name}.qss").read_text("utf-8")
+def load_qss() -> str:
+    return resources.files("plc_motion.ui").joinpath("themes", "dark.qss").read_text("utf-8")
 
 
-def apply_theme(app: QApplication, name: str) -> None:
-    global _current
-    _current = name  # 先更新：setStyleSheet 觸發的 StyleChange 處理端要讀到新主題色
-    app.setStyleSheet(load_qss(name))
+def app_font() -> QFont:
+    """英數用 Bahnschrift（DIN 風格、等寬數字），中文落到微軟正黑體。"""
+    font = QFont()
+    font.setFamilies(list(FONT_FAMILIES))
+    font.setPointSizeF(10.5)
+    return font
 
 
-def current_theme() -> str:
-    return _current
+def apply_theme(app: QApplication) -> None:
+    app.setFont(app_font())
+    app.setStyleSheet(load_qss())
 
 
-def color(role: str, theme: str | None = None) -> QColor:
-    return QColor(_COLORS[theme or _current][role])
+def color(role: str) -> QColor:
+    return QColor(COLORS[role])
 
 
 def set_state(widget: QWidget, state: str) -> None:

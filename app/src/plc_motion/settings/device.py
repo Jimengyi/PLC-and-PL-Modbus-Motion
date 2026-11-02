@@ -1,4 +1,4 @@
-"""device.toml：連線、輪詢、交握、日誌與主題設定。
+"""device.toml：連線、輪詢、交握與日誌設定。
 
 檔案格式：
 
@@ -6,19 +6,16 @@
     [polling]     interval_ms（預設 200）
     [handshake]   timeout_s（預設 5）、reset_alarm_pulse_ms（預設 500）
     [log]         retention_days（預設 30）
-    [ui]          theme（dark 或 light，預設 dark）
+
+舊版的 [ui] theme 已不使用（介面只有深色），檔案裡留著也不影響載入。
 """
 
-import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from plc_motion.settings.paths import atomic_write_bytes
-
 FILE_NAME = "device.toml"
-THEMES = ("dark", "light")
 
 
 @dataclass
@@ -30,48 +27,7 @@ class DeviceSettings:
     handshake_timeout_s: float = 5
     reset_alarm_pulse_ms: int = 500
     log_retention_days: int = 30
-    theme: str = "dark"
     path: Path | None = field(default=None, repr=False)
-
-    def save_theme(self, theme: str) -> None:
-        """只改 [ui] 段的 theme 值，其餘內容與註解逐字保留；原子替換寫回。"""
-        if theme not in THEMES:
-            raise ValueError(f"主題只能是 dark 或 light：{theme}")
-        if self.path is None:
-            raise ValueError("此設定未對應到檔案")
-        text = self.path.read_bytes().decode("utf-8")
-        atomic_write_bytes(self.path, _replace_theme(text, theme).encode("utf-8"))
-        self.theme = theme
-
-
-_TABLE_RE = re.compile(r"^\s*\[\s*([A-Za-z0-9_\-]+)\s*\]\s*(#.*)?$")
-_THEME_RE = re.compile(r"""^(\s*theme\s*=\s*)("[^"\n]*"|'[^'\n]*')""")
-
-
-def _replace_theme(text: str, theme: str) -> str:
-    lines = text.splitlines(keepends=True)
-    section = ""
-    ui_header_index = None
-    for idx, line in enumerate(lines):
-        m = _TABLE_RE.match(line.rstrip("\r\n"))
-        if m:
-            section = m.group(1)
-            if section == "ui":
-                ui_header_index = idx
-            continue
-        if section == "ui":
-            m = _THEME_RE.match(line)
-            if m:
-                lines[idx] = m.group(1) + f'"{theme}"' + line[m.end() :]
-                return "".join(lines)
-    newline = "\r\n" if "\r\n" in text else "\n"
-    if ui_header_index is not None:
-        lines.insert(ui_header_index + 1, f'theme = "{theme}"{newline}')
-        return "".join(lines)
-    out = "".join(lines)
-    if out and not out.endswith(("\n", "\r")):
-        out += newline
-    return out + f'{newline}[ui]{newline}theme = "{theme}"{newline}'
 
 
 def _is_int(v: Any) -> bool:
@@ -108,7 +64,6 @@ def parse_device(data: dict[str, Any], path: Path) -> tuple[DeviceSettings | Non
     polling = table("polling")
     handshake = table("handshake")
     log = table("log")
-    ui = table("ui")
 
     def get(t: dict[str, Any], section: str, key: str, default: Any, check, rule: str):
         if key not in t:
@@ -129,7 +84,6 @@ def parse_device(data: dict[str, Any], path: Path) -> tuple[DeviceSettings | Non
     hs_timeout = get(handshake, "handshake", "timeout_s", 5, _is_positive_number, "須為正數")
     pulse = get(handshake, "handshake", "reset_alarm_pulse_ms", 500, pos_int, pos_int_rule)
     retention = get(log, "log", "retention_days", 30, pos_int, pos_int_rule)
-    theme = get(ui, "ui", "theme", "dark", lambda v: v in THEMES, "須為 dark 或 light")
 
     if errors:
         return None, errors
@@ -142,7 +96,6 @@ def parse_device(data: dict[str, Any], path: Path) -> tuple[DeviceSettings | Non
             handshake_timeout_s=hs_timeout,
             reset_alarm_pulse_ms=pulse,
             log_retention_days=retention,
-            theme=theme,
             path=path,
         ),
         [],

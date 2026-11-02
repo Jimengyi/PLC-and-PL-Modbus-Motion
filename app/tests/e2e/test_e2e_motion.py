@@ -87,7 +87,7 @@ def test_ac8_three_axes_absolute_move_handshake_order_and_lock(e2e):
     assert all(s.enabled == frozenset() for s in during)
     e2e.wait_unlocked()
     e2e.until(lambda: e2e.app.axis_page.move_button.isEnabled())
-    assert {"執行勾選軸移動", "全部 Servo ON", "全部原點復歸", "步進 1+"} <= e2e.enabled_controls()
+    assert {"點位移動", "全部 Servo ON", "全部原點復歸", "步進 1+"} <= e2e.enabled_controls()
 
 
 def test_ac9_relative_move_converts_to_absolute_code2(e2e):
@@ -127,8 +127,8 @@ def test_ac10_negative_target_words_and_negative_position_display(e2e):
 
     e2e.wait_finished(ev, 30000)
     e2e.sim_call("set_position", 1, -2.3456)
-    row = e2e.app.axis_page.rows[1]
-    e2e.until(lambda: row.position_label.text() == "-2.3456 mm")
+    card = e2e.app.axis_page.cards[1]
+    e2e.until(lambda: card.position_label.text() == "-2.3456")
 
 
 def test_ac11_precheck_failure_writes_nothing_and_names_axis(e2e):
@@ -147,7 +147,7 @@ def test_ac11_precheck_failure_writes_nothing_and_names_axis(e2e):
     assert e2e.writes(since) == []
 
     e2e.prepare(servo=(), homed=(2,))
-    e2e.until(lambda: lit(app.axis_page.rows[2].lamps["home_finish"]))
+    e2e.until(lambda: lit(app.axis_page.home_finish_lamps[2]))
     ev = len(e2e.events)
     e2e.move({1: 150.0, 2: 5.0})
     e2e.until(lambda: e2e.rejected(ev))
@@ -170,7 +170,7 @@ def test_ac12_alarm_on_one_axis_others_continue(e2e):
     )
     e2e.move({1: 20.0, 2: 20.0})
     alarm.check()
-    e2e.until(lambda: app.axis_page.rows[2].property("state") == "fault")
+    e2e.until(lambda: app.axis_page.cards[2].property("state") == "fault")
     finished = e2e.wait_finished(ev, 30000)
 
     assert finished.results[1].kind == ResultKind.DONE
@@ -284,7 +284,7 @@ def test_ac14_estop_during_move_then_reset_requires_home(e2e):
     e2e.until(lambda: app.window.estop_label.text() == "急停：正常")
     e2e.wait_unlocked()
     ev = len(e2e.events)
-    e2e.click(app.window.reset_button)
+    e2e.click(app.axis_page.reset_button)
     finished = e2e.wait_finished(ev, 20000)
     assert kinds(finished) == {n: ResultKind.RESET_OK for n in AXES}
     for n in AXES:
@@ -293,9 +293,8 @@ def test_ac14_estop_during_move_then_reset_requires_home(e2e):
 
     e2e.wait_unlocked()
     page = app.axis_page
-    e2e.until(lambda: all(page.rows[n].alarm_label.text() == "0" for n in AXES))
+    e2e.until(lambda: all(page.cards[n].reason_label.text() == "" for n in AXES))
     assert not any(lit(lamp) for lamp in page.home_finish_lamps.values())
-    assert not any(lit(page.rows[n].lamps["home_finish"]) for n in AXES)
     assert not any(b.isEnabled() for b in page.jog_pad.step_buttons.values())
 
     ev, since = len(e2e.events), e2e.mark()
@@ -440,7 +439,7 @@ def test_ac19_step_long_from_10mm_and_soft_limit(e2e):
 
     e2e.wait_unlocked()
     e2e.sim_call("set_position", 1, 95.0)
-    e2e.until(lambda: app.axis_page.rows[1].position_label.text() == "95.0000 mm")
+    e2e.until(lambda: app.axis_page.cards[1].position_label.text() == "95.0000")
     ev, since = len(e2e.events), e2e.mark()
     e2e.click(pad.step_buttons[(1, +1)])
     e2e.until(lambda: e2e.rejected(ev))
@@ -544,7 +543,7 @@ def test_ac22_no_servo_write_on_start_and_quit_servo_on_writes_all(e2e):
     assert [w for w in e2e.writes() if w[0].startswith("Servo Motor")] == []
 
     since = e2e.mark()
-    e2e.click(app.window.servo_on_button)
+    e2e.click(app.axis_page.servo_on_button)
     e2e.until(lambda: len(e2e.writes(since)) >= 7)
     e2e.settle(300)
     assert sorted(e2e.writes(since)) == sorted((f"Servo Motor {n}", True) for n in AXES)
@@ -558,7 +557,7 @@ def test_ac22_no_servo_write_on_start_and_quit_servo_on_writes_all(e2e):
 
 def test_ac23_servo_off_and_reset_disabled_while_moving(e2e):
     started(e2e)
-    window = e2e.app.window
+    window = e2e.app.axis_page  # Servo 與 Reset Alarm 在軸控頁的全軸操作
     ev = len(e2e.events)
     e2e.move({1: 40.0}, speed=10)  # 5 mm/s，約 8 秒
     e2e.until(lambda: e2e.model("Busy 1") is True)
@@ -583,7 +582,7 @@ def test_ac24_reset_only_alarm_axes_one_ok_one_fail_no_retry(e2e):
     app = e2e.start()
     e2e.wait_unlocked()
     ev, since = len(e2e.events), e2e.mark()
-    e2e.click(app.window.reset_button)
+    e2e.click(app.axis_page.reset_button)
     finished = e2e.wait_finished(ev, 30000)
     assert kinds(finished) == {2: ResultKind.RESET_OK, 5: ResultKind.RESET_FAIL}
 

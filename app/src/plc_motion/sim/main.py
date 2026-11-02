@@ -47,7 +47,7 @@ def main(argv: list[str] | None = None) -> int:
         print("\n".join(e.errors), file=sys.stderr)
         QMessageBox.critical(None, "模擬 PLC", "設定檔錯誤：\n" + "\n".join(e.errors))
         return 1
-    apply_theme(app, config.device.theme)
+    apply_theme(app)
 
     server = SimServer(PlcModel(config.points), config.points, args.host, args.port)
     try:

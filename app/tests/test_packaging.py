@@ -49,7 +49,7 @@ def test_not_onefile(dist: Path):
 
 def test_theme_files_are_bundled(dist: Path):
     names = {p.name for p in dist.rglob("*.qss")}
-    assert {"dark.qss", "light.qss"} <= names
+    assert "dark.qss" in names
 
 
 def test_license_notices_cover_bundled_packages(dist: Path):

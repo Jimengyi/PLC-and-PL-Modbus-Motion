@@ -83,7 +83,7 @@ def test_device_toml_values():
     assert d["polling"] == {"interval_ms": 200}
     assert d["handshake"] == {"timeout_s": 5, "reset_alarm_pulse_ms": 500}
     assert d["log"] == {"retention_days": 30}
-    assert d["ui"] == {"theme": "dark"}
+    assert "ui" not in d  # 介面只有深色，不再有主題設定
 
 
 def test_device_toml_every_key_has_comment_above():

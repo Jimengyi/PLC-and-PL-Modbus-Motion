@@ -1,5 +1,7 @@
-"""主視窗框架（spec FR-41、FR-42、FR-44、FR-45）：左側導覽、工具列、狀態列與事件顯示。
+"""主視窗框架（spec FR-41、FR-42、FR-44、FR-45）：左側導覽、頂列、狀態列與事件顯示。
 
+頂列只有連線狀態、重新連線與急停狀態；Servo 與 Reset Alarm 在軸控頁的「全軸操作」。
+狀態列左側是最新訊息，右側是通訊計時（`ui.comm`）。
 頁面由 `add_page(name, icon, widget)` 掛入。命令一律呼叫 worker 的命令方法；畫面狀態只依
 `snapshot_ready`、`connection_changed`、`engine_event` 更新。關閉鈕與最小化都縮到系統匣，
 真正結束走 `request_quit()` → `quit_confirmed`，由 `MotionApp.shutdown()` 收尾。
@@ -9,10 +11,9 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from PySide6.QtCore import QEvent, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QCloseEvent, QColor, QFont, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QEvent, QPointF, QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QCloseEvent, QColor, QFont, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (
-    QApplication,
     QButtonGroup,
     QFrame,
     QHBoxLayout,
@@ -41,17 +42,17 @@ from plc_motion.engine import (
 )
 from plc_motion.plc.snapshot import Snapshot
 from plc_motion.settings.loader import AppConfig
+from plc_motion.ui.comm import CommDialog, CommIndicator, CommStats
 from plc_motion.ui.dialogs import TextDialog
 from plc_motion.ui.residual_dialog import ResidualDialog
-from plc_motion.ui.theme import apply_theme, color, current_theme, set_state
+from plc_motion.ui.theme import color, set_state
 from plc_motion.ui.tray import APP_TITLE
-from plc_motion.worker import EngineStatus
+from plc_motion.worker import EngineStatus, PollTiming
 
 log = logging.getLogger("plc_motion.ui")
 
 MIN_WIDTH, MIN_HEIGHT = 1600, 900
-NAV_EXPANDED_WIDTH = 180
-NAV_COLLAPSED_WIDTH = 56
+NAV_WIDTH = 92
 MAX_MESSAGES = 500
 _SUCCESS_RESULTS = (ResultKind.DONE, ResultKind.RESET_OK)
 
@@ -83,69 +84,95 @@ def glyph_icon(text: str, size: int = 32) -> QIcon:
     return QIcon(pixmap)
 
 
+def _line_icon(draw, size: int = 56) -> QIcon:
+    """以線條畫導覽圖示；`draw(painter, size)` 在透明底上畫。"""
+    icon = QIcon()
+    # 未選取（Off）用暗色、選取中（On）用亮色
+    for state, role in ((QIcon.State.Off, "text_dim"), (QIcon.State.On, "text")):
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        pen = QPen(color(role), size / 14)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+        painter.setPen(pen)
+        draw(painter, size)
+        painter.end()
+        icon.addPixmap(pixmap, QIcon.Mode.Normal, state)
+        icon.addPixmap(pixmap, QIcon.Mode.Active, state)
+    return icon
+
+
+def axis_icon() -> QIcon:
+    """軸控：十字箭頭。"""
+
+    def draw(p: QPainter, s: int) -> None:
+        m, c, a = s * 0.15, s / 2, s * 0.12
+        p.drawLine(QPointF(c, m), QPointF(c, s - m))
+        p.drawLine(QPointF(m, c), QPointF(s - m, c))
+        for tip, d1, d2 in (
+            (QPointF(c, m), QPointF(-a, a), QPointF(a, a)),
+            (QPointF(c, s - m), QPointF(-a, -a), QPointF(a, -a)),
+            (QPointF(m, c), QPointF(a, -a), QPointF(a, a)),
+            (QPointF(s - m, c), QPointF(-a, -a), QPointF(-a, a)),
+        ):
+            p.drawLine(tip, tip + d1)
+            p.drawLine(tip, tip + d2)
+
+    return _line_icon(draw)
+
+
+def io_icon() -> QIcon:
+    """IO Monitor：面板上兩個燈號與兩條線。"""
+
+    def draw(p: QPainter, s: int) -> None:
+        m = s * 0.14
+        p.drawRoundedRect(QRectF(m, m * 1.3, s - 2 * m, s - 2.6 * m), s * 0.06, s * 0.06)
+        r = s * 0.06
+        for y in (s * 0.4, s * 0.6):
+            p.drawEllipse(QPointF(s * 0.34, y), r, r)
+            p.drawLine(QPointF(s * 0.48, y), QPointF(s * 0.72, y))
+
+    return _line_icon(draw)
+
+
 class NavBar(QFrame):
-    """左側導覽：一頁一顆按鈕；收合後只剩圖示，名稱移到 tooltip。"""
+    """左側導覽：一頁一顆按鈕，圖示在上、名稱在下。"""
 
     current_changed = Signal(int)
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.setObjectName("nav")
-        self.collapsed = False
         self.buttons: list[QToolButton] = []
-        self._names: list[str] = []
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
         self._group.idClicked.connect(self.current_changed)
-
-        self.toggle_button = QToolButton()
-        self.toggle_button.setObjectName("navToggle")
-        self.toggle_button.setText("≡")
-        self.toggle_button.setToolTip("收合導覽")
-        self.toggle_button.clicked.connect(lambda: self.set_collapsed(not self.collapsed))
-
         self._layout = QVBoxLayout(self)
-        self._layout.setContentsMargins(6, 8, 6, 8)
-        self._layout.setSpacing(4)
-        self._layout.addWidget(self.toggle_button)
+        self._layout.setContentsMargins(0, 8, 0, 8)
+        self._layout.setSpacing(2)
         self._layout.addStretch(1)
-        self.setFixedWidth(NAV_EXPANDED_WIDTH)
+        self.setFixedWidth(NAV_WIDTH)
 
     def add(self, name: str, icon: QIcon | None) -> int:
         index = len(self.buttons)
         button = QToolButton()
         button.setCheckable(True)
+        button.setText(name)
         button.setIcon(icon if icon is not None and not icon.isNull() else glyph_icon(name))
-        button.setIconSize(QSize(22, 22))
+        button.setIconSize(QSize(28, 28))
+        button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
         button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._group.addButton(button, index)
         self._layout.insertWidget(self._layout.count() - 1, button)
         self.buttons.append(button)
-        self._names.append(name)
-        self._apply_style(button, name)
         if index == 0:
             button.setChecked(True)
         return index
 
     def select(self, index: int) -> None:
         self.buttons[index].setChecked(True)
-
-    def set_collapsed(self, collapsed: bool) -> None:
-        self.collapsed = collapsed
-        self.setFixedWidth(NAV_COLLAPSED_WIDTH if collapsed else NAV_EXPANDED_WIDTH)
-        self.toggle_button.setToolTip("展開導覽" if collapsed else "收合導覽")
-        for button, name in zip(self.buttons, self._names, strict=True):
-            self._apply_style(button, name)
-
-    def _apply_style(self, button: QToolButton, name: str) -> None:
-        if self.collapsed:
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
-            button.setText("")
-            button.setToolTip(name)
-        else:
-            button.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
-            button.setText(name)
-            button.setToolTip("")
 
 
 class MainWindow(QMainWindow):
@@ -160,6 +187,8 @@ class MainWindow(QMainWindow):
         self.snapshot: Snapshot | None = None
         self.status: EngineStatus | None = None
         self.messages: list[Message] = []
+        self.comm_stats = CommStats()
+        self._connected = False
 
         self.setWindowTitle(APP_TITLE)
         self.setMinimumSize(MIN_WIDTH, MIN_HEIGHT)
@@ -175,10 +204,10 @@ class MainWindow(QMainWindow):
         worker.snapshot_ready.connect(self.on_snapshot)
         worker.connection_changed.connect(self.on_connection_changed)
         worker.engine_event.connect(self.on_engine_event)
+        worker.poll_timed.connect(self.on_poll_timed)
 
         self._set_connection(False, initial=True)
         self._update_estop(None)
-        self._update_write_buttons()
 
     # ---- 版面 ----
 
@@ -190,39 +219,32 @@ class MainWindow(QMainWindow):
         self.toolbar.toggleViewAction().setEnabled(False)
         self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self.toolbar)
 
+        brand = QLabel(APP_TITLE)
+        brand.setObjectName("brand")
         self.connection_label = QLabel()
+        self.connection_label.setObjectName("connection")
+        self.connection_label.setTextFormat(Qt.TextFormat.RichText)
         self.reconnect_button = QPushButton("重新連線")
+        self.reconnect_button.setObjectName("small")
         self.reconnect_button.clicked.connect(self._worker.connect_plc)
         self.estop_label = QLabel()
-        self.servo_on_button = QPushButton("全部 Servo ON")
-        self.servo_on_button.clicked.connect(lambda: self._worker.servo_all(True))
-        self.servo_off_button = QPushButton("全部 Servo OFF")
-        self.servo_off_button.clicked.connect(lambda: self._worker.servo_all(False))
-        self.reset_button = QPushButton("全部 Reset Alarm")
-        self.reset_button.clicked.connect(self._worker.reset_all)
+        self.estop_label.setObjectName("estop")
         self.residual_button = QPushButton("殘留交握…")
         self.residual_button.setToolTip("重新開啟殘留交握視窗")
         self.residual_button.clicked.connect(self.residual_dialog.popup)
-        self.write_buttons = [self.servo_on_button, self.servo_off_button, self.reset_button]
-        self.theme_button = QPushButton()
-        self.theme_button.clicked.connect(self.toggle_theme)
-        self._update_theme_button()
 
         spacer = QWidget()
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         spacer.setStyleSheet("background: transparent;")
 
+        self.toolbar.addWidget(brand)
         self.toolbar.addWidget(self.connection_label)
         self.toolbar.addWidget(self.reconnect_button)
         self.toolbar.addSeparator()
         self.toolbar.addWidget(self.estop_label)
-        self.toolbar.addSeparator()
-        for button in self.write_buttons:
-            self.toolbar.addWidget(button)
         self._residual_action = self.toolbar.addWidget(self.residual_button)
         self._residual_action.setVisible(False)
         self.toolbar.addWidget(spacer)
-        self.toolbar.addWidget(self.theme_button)
 
     def _build_body(self) -> None:
         self.nav = NavBar()
@@ -239,7 +261,11 @@ class MainWindow(QMainWindow):
     def _build_status_bar(self) -> None:
         self.status_bar = QStatusBar()
         self.status_bar.setSizeGripEnabled(False)
-        self.poll_label = QLabel(f"輪詢週期 {self._config.device.poll_interval_ms} ms")
+        interval = self._config.device.poll_interval_ms
+        self.comm_indicator = CommIndicator(interval)
+        self.comm_indicator.clicked.connect(self.show_comm)
+        self.comm_dialog = CommDialog(interval, self)
+        self.comm_dialog.reset_requested.connect(self._reset_comm)
         self.message_button = QPushButton("")
         self.message_button.setObjectName("message")
         self.message_button.setFlat(True)
@@ -248,7 +274,7 @@ class MainWindow(QMainWindow):
         self.message_button.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.message_button.clicked.connect(self.show_history)
         self.status_bar.addWidget(self.message_button, 1)
-        self.status_bar.addPermanentWidget(self.poll_label)
+        self.status_bar.addPermanentWidget(self.comm_indicator)
         self.setStatusBar(self.status_bar)
 
     def add_page(self, name: str, icon: QIcon | None, widget: QWidget) -> int:
@@ -266,13 +292,18 @@ class MainWindow(QMainWindow):
         if not status.connected:
             self._set_connection(False)
         self._update_estop(snapshot)
-        self._update_write_buttons()
         if not status.residual:
             self._residual_action.setVisible(False)
             self.residual_dialog.hide()
 
     def on_connection_changed(self, connected: bool) -> None:
         self._set_connection(connected)
+        if connected:
+            self.comm_stats.reset()
+        elif self._connected:
+            self.comm_stats.disconnects += 1
+        self._connected = connected
+        self._refresh_comm()
         if connected:
             self.show_message(f"已連線到 PLC {self._endpoint}", level="ok")
         else:
@@ -348,6 +379,25 @@ class MainWindow(QMainWindow):
         axis = self._config.axes.get(n)
         return axis.name if axis is not None else str(n)
 
+    # ---- 通訊計時 ----
+
+    def on_poll_timed(self, timing: PollTiming) -> None:
+        self.comm_stats.add(timing)
+        self._refresh_comm()
+
+    def show_comm(self) -> None:
+        self.comm_dialog.update_stats(self.comm_stats)
+        self.comm_dialog.popup()
+
+    def _reset_comm(self) -> None:
+        self.comm_stats.reset_all()
+        self._refresh_comm()
+
+    def _refresh_comm(self) -> None:
+        self.comm_indicator.update_stats(self.comm_stats)
+        if self.comm_dialog.isVisible():
+            self.comm_dialog.update_stats(self.comm_stats)
+
     # ---- 狀態列訊息 ----
 
     def show_message(self, summary: str, level: str = "info", detail: str | None = None) -> None:
@@ -370,16 +420,19 @@ class MainWindow(QMainWindow):
         )
         self.history_dialog.set_content(f"最近 {len(self.messages)} 則訊息（新的在上）", text)
 
-    # ---- 工具列狀態 ----
+    # ---- 頂列狀態 ----
 
     def _set_connection(self, connected: bool, initial: bool = False) -> None:
         if connected:
-            self.connection_label.setText(f"● 已連線 {self._endpoint}".rstrip())
-            set_state(self.connection_label, "ok")
+            text, state = "已連線", "ok"
         else:
-            text = "● 連線中…" if initial else "● 未連線"
-            self.connection_label.setText(f"{text} {self._endpoint}".rstrip())
-            set_state(self.connection_label, "off")
+            text, state = ("連線中…" if initial else "未連線"), "off"
+        dot = color(state).name()
+        self.connection_label.setText(
+            f'<span style="color:{dot}">●</span>&nbsp;{text} {self._endpoint}'.rstrip()
+        )
+        self.connection_label.setAccessibleName(f"{text} {self._endpoint}".rstrip())
+        set_state(self.connection_label, state)
 
     def _update_estop(self, snapshot: Snapshot | None) -> None:
         if snapshot is None:
@@ -389,36 +442,8 @@ class MainWindow(QMainWindow):
             self.estop_label.setText("急停：正常")
             set_state(self.estop_label, "ok")
         else:
-            self.estop_label.setText("急停：觸發")
+            self.estop_label.setText("⚠ 急停觸發")
             set_state(self.estop_label, "fault")
-
-    def _update_write_buttons(self) -> None:
-        status = self.status
-        enabled = status is not None and not status.locked
-        if status is None:
-            tip = "尚未取得 PLC 狀態"
-        elif status.locked:
-            tip = "鎖定中：\n" + "\n".join(status.lock_reasons)
-        else:
-            tip = ""
-        for button in self.write_buttons:
-            button.setEnabled(enabled)
-            button.setToolTip(tip)
-
-    # ---- 主題 ----
-
-    def toggle_theme(self) -> None:
-        name = "light" if current_theme() == "dark" else "dark"
-        apply_theme(QApplication.instance(), name)
-        self._update_theme_button()
-        try:
-            self._config.device.save_theme(name)
-        except Exception as e:
-            log.exception("主題寫回 device.toml 失敗")
-            self.show_message(f"主題已切換，但寫回 device.toml 失敗：{e}", "fault")
-
-    def _update_theme_button(self) -> None:
-        self.theme_button.setText("切換淺色" if current_theme() == "dark" else "切換深色")
 
     # ---- 系統匣與結束 ----
 

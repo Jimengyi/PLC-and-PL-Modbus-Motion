@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import pytest
@@ -29,7 +28,6 @@ def test_device_values_are_loaded(config_dir):
     assert device.handshake_timeout_s == 5
     assert device.reset_alarm_pulse_ms == 500
     assert device.log_retention_days == 30
-    assert device.theme == "dark"
 
 
 def test_device_optional_keys_fall_back_to_fr2_defaults(config_dir):
@@ -43,7 +41,6 @@ def test_device_optional_keys_fall_back_to_fr2_defaults(config_dir):
     assert device.handshake_timeout_s == 5
     assert device.reset_alarm_pulse_ms == 500
     assert device.log_retention_days == 30
-    assert device.theme == "dark"
 
 
 def test_device_missing_host_is_reported(config_dir):
@@ -58,79 +55,11 @@ def test_device_invalid_port_is_reported(config_dir):
     assert any("device.toml" in e and "port" in e for e in _errors(config_dir))
 
 
-def test_device_invalid_theme_is_reported(config_dir):
-    _edit(config_dir / "device.toml", 'theme = "dark"', 'theme = "blue"')
-
-    assert any("device.toml" in e and "theme" in e for e in _errors(config_dir))
-
-
-def test_save_theme_changes_only_the_theme_value(config_dir):
-    path = config_dir / "device.toml"
-    before = path.read_bytes()
+def test_device_legacy_ui_theme_is_ignored(config_dir):
+    """舊版 device.toml 的 [ui] theme（含已不支援的值）不影響載入：介面只有深色。"""
+    _edit(config_dir / "device.toml", 'theme = "dark"', 'theme = "light"')
     device = load_config(config_dir).device
-
-    device.save_theme("light")
-
-    after = path.read_bytes()
-    assert after == before.replace(b'theme = "dark"', b'theme = "light"')
-    assert device.theme == "light"
-    assert load_config(config_dir).device.theme == "light"
-
-
-def test_save_theme_preserves_crlf_and_comments(config_dir):
-    path = config_dir / "device.toml"
-    path.write_bytes(path.read_bytes().replace(b"\n", b"\r\n"))
-    before = path.read_bytes()
-    device = load_config(config_dir).device
-
-    device.save_theme("light")
-
-    assert path.read_bytes() == before.replace(b'theme = "dark"', b'theme = "light"')
-
-
-def test_save_theme_only_touches_ui_section(config_dir):
-    # 其他段落出現同名鍵時不可被改到
-    path = config_dir / "device.toml"
-    _edit(path, "[polling]\n", '[polling]\ntheme = "dark"\n')
-    before = path.read_bytes()
-    device = load_config(config_dir).device
-
-    device.save_theme("light")
-
-    after = path.read_bytes()
-    assert after.count(b'theme = "dark"') == 1
-    assert after == before.replace(b'theme = "dark"  #', b'theme = "light"  #')
-
-
-def test_save_theme_rejects_unknown_theme(config_dir):
-    device = load_config(config_dir).device
-
-    with pytest.raises(ValueError):
-        device.save_theme("blue")
-
-
-def test_save_theme_failure_mid_write_keeps_original(config_dir, monkeypatch):
-    path = config_dir / "device.toml"
-    before = path.read_bytes()
-    device = load_config(config_dir).device
-
-    def boom(*args, **kwargs):
-        raise OSError("模擬寫入中斷")
-
-    monkeypatch.setattr(os, "fsync", boom)
-    with pytest.raises(OSError):
-        device.save_theme("light")
-
-    assert path.read_bytes() == before
-    assert sorted(p.name for p in config_dir.iterdir()) == [
-        "axes.toml",
-        "device.toml",
-        "io_points.csv",
-        "positions.csv",
-    ]
-
-
-# ---- axes.toml ----
+    assert not hasattr(device, "theme")
 
 
 def test_axes_values_are_loaded(config_dir):

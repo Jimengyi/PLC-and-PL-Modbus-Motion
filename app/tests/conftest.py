@@ -194,3 +194,29 @@ def config_dir(tmp_path: Path, write_io_points) -> Path:
     (d / "axes.toml").write_bytes(axes_toml_text().encode("utf-8"))
     write_io_points(d, default_io_rows())
     return d
+
+
+class ConfirmRecorder:
+    """取代 `confirm_dialog.confirm`：記錄每次確認視窗的內容並自動回答 `answer`。"""
+
+    def __init__(self):
+        self.answer = True
+        self.calls: list[dict] = []
+
+    def __call__(self, parent, title, **kwargs):
+        self.calls.append({"title": title, **kwargs})
+        return self.answer
+
+    @property
+    def last(self) -> dict:
+        return self.calls[-1]
+
+
+@pytest.fixture(autouse=True)
+def confirms(monkeypatch) -> ConfirmRecorder:
+    """寫入前的確認視窗一律自動回答確認（測試可改 `confirms.answer = False`）。"""
+    from plc_motion.ui import confirm_dialog
+
+    recorder = ConfirmRecorder()
+    monkeypatch.setattr(confirm_dialog, "confirm", recorder)
+    return recorder

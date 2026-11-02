@@ -262,7 +262,8 @@ def test_server_stop_disconnects_within_one_poll(qtbot, server, make_worker, cap
     wait_connected(qtbot, probe, value=False, timeout=200 + 100)
     assert time.monotonic() - t0 <= 0.3
     assert "斷線" in log_text(caplog_info)
-    assert probe.status.connected is False
+    # connection_changed 與之後的 snapshot_ready 是兩個排隊的 signal：等斷線後的狀態也送到
+    until(qtbot, lambda: probe.snapshots and probe.status.connected is False)
     assert probe.status.locked
 
 
@@ -465,3 +466,30 @@ def test_events_are_written_to_daily_log_file(qtbot, tmp_path, server, make_work
         assert "斷線" in text
     finally:
         close_logging()
+
+
+# ---- 通訊計時 ----
+
+
+def test_poll_timed_reports_read_time_cycle_and_request_count(
+    qtbot, server, make_worker, config_dir
+):
+    from plc_motion.plc.batching import plan_reads
+
+    _thread, worker, probe = make_worker(server=server, interval_ms=50)
+    timings: list = []
+    worker.poll_timed.connect(timings.append)
+    wait_connected(qtbot, probe)
+    until(qtbot, lambda: len(timings) >= 6)
+    first, *rest = timings
+    assert first.cycle_ms is None  # 連線後第一輪沒有間隔
+    assert all(t.read_ms > 0 for t in timings)
+    # 間隔約等於 50 ms 的輪詢週期；個別一輪可能因計時器晚觸發而偏短或偏長，所以看平均
+    assert all(t.cycle_ms > 0 for t in rest)
+    assert 40 <= sum(t.cycle_ms for t in rest) / len(rest) <= 150
+    expected = len(plan_reads(load_config(config_dir).points.all()))
+    assert {t.requests for t in timings} == {expected}
+
+    worker.connect_plc()  # 重新連線：第一輪又沒有間隔
+    count = len(timings)  # 排到重新連線之前可能還有一輪，等到出現沒有間隔的那一輪
+    until(qtbot, lambda: any(t.cycle_ms is None for t in timings[count:]))

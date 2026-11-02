@@ -11,7 +11,7 @@ from types import MappingProxyType
 
 import pytest
 from PySide6.QtCore import QTimer
-from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QWidget
+from PySide6.QtWidgets import QApplication, QLabel, QMessageBox, QProgressBar, QWidget
 from ui_support import answer_next_message_box, status
 
 from plc_motion.app import MotionApp
@@ -28,10 +28,12 @@ from plc_motion.plc import PlcModel
 from plc_motion.settings import load_config
 from plc_motion.sim import SimServer
 from plc_motion.ui.axis_page import AxisPage
+from plc_motion.ui.comm import CommStats, load_state
 from plc_motion.ui.dialogs import ExceptionReporter
 from plc_motion.ui.main_window import MainWindow
 from plc_motion.ui.points_panel import DESC_COL
 from plc_motion.ui.theme import apply_theme, load_qss
+from plc_motion.worker import PollTiming
 
 
 def until(qtbot, cond, timeout: int = 5000) -> None:
@@ -65,10 +67,9 @@ def test_minimum_size_is_1600x900(window):
     assert window.minimumSize().height() == 900
 
 
-@pytest.mark.parametrize("theme", ["dark", "light"])
-def test_points_layout_readable_at_minimum_size(window, config, fake_worker, qtbot, theme):
-    """1600×900 下：點位操作區的七個軸勾選框標籤完整，點位表不捲動即可看到 點位 ~ 升降 欄。"""
-    apply_theme(QApplication.instance(), theme)
+def test_axis_page_layout_readable_at_minimum_size(window, config, fake_worker, qtbot):
+    """1600×900 下：七張位置卡、三欄與點位操作都看得到；點位表不捲動即可看到 點位 ~ 升降 欄。"""
+    apply_theme(QApplication.instance())
     page = AxisPage(config, fake_worker)
     window.add_page("軸控", None, page)
     window.resize(1600, 900)
@@ -77,9 +78,15 @@ def test_points_layout_readable_at_minimum_size(window, config, fake_worker, qtb
 
     names = [box.text() for box in panel.axis_checks.values()]
     assert names == [config.axes[n].name for n in sorted(config.axes)]
-    for box in panel.axis_checks.values():
-        assert box.isVisible()
-        assert box.width() >= box.sizeHint().width(), box.text()
+    for widget in (*panel.axis_checks.values(), panel.move_button, panel.clear_button):
+        assert widget.isVisible()
+        assert widget.width() >= widget.sizeHint().width(), widget.text()
+    for button in (page.servo_on_button, page.servo_off_button, page.reset_button):
+        assert button.width() >= button.sizeHint().width(), button.text()
+    for widget in (page.reset_button, page.home_all_button, page.jog_pad.step_buttons[(6, 1)]):
+        bottom = widget.mapTo(page, widget.rect().bottomLeft()).y()
+        assert bottom <= page.height(), widget.text()  # 不被切掉
+    assert all(card.isVisible() for card in page.cards.values())
 
     table = panel.table
     lift_col = DESC_COL - 1
@@ -102,61 +109,26 @@ def test_add_page_adds_nav_entry_and_switches(window, qtbot):
     assert window.pages.currentWidget() is b
 
 
-def test_nav_collapse_widens_content(window, qtbot):
-    window.add_page("軸控", None, QWidget())
+def test_nav_shows_icon_above_name(window):
     window.add_page("IO Monitor", None, QWidget())
-    qtbot.waitUntil(lambda: window.pages.width() > 0)
-    before = window.pages.width()
-    window.nav.toggle_button.click()
-    assert window.nav.collapsed
-    until(qtbot, lambda: window.pages.width() > before)
-    assert window.nav.width() < 80
-    window.nav.toggle_button.click()
-    assert not window.nav.collapsed
-    until(qtbot, lambda: window.pages.width() == before)
-
-
-def test_collapsed_nav_shows_name_as_tooltip(window):
-    window.add_page("IO Monitor", None, QWidget())
-    window.nav.set_collapsed(True)
     button = window.nav.buttons[0]
-    assert button.text() == "" or button.toolButtonStyle().name == "ToolButtonIconOnly"
-    assert button.toolTip() == "IO Monitor"
+    assert button.text() == "IO Monitor"
+    assert button.toolButtonStyle().name == "ToolButtonTextUnderIcon"
     assert not button.icon().isNull()
+    assert window.nav.width() == 92
 
 
 # ---- 工具列 ----
 
 
-def test_toolbar_buttons_send_commands(window, fake_worker, make_snapshot):
+def test_toolbar_has_only_connection_and_estop(window, fake_worker, make_snapshot):
+    """Servo、Reset Alarm 移到軸控頁；頂列只剩連線、重新連線、急停，且沒有主題切換。"""
     fake_worker.snapshot_ready.emit(make_snapshot(), status())
     window.reconnect_button.click()
-    window.servo_on_button.click()
-    window.servo_off_button.click()
-    window.reset_button.click()
-    assert fake_worker.calls == [
-        ("connect_plc",),
-        ("servo_all", True),
-        ("servo_all", False),
-        ("reset_all",),
-    ]
-
-
-def test_write_buttons_follow_lock(window, fake_worker, make_snapshot):
-    buttons = [window.servo_on_button, window.servo_off_button, window.reset_button]
-    assert not any(b.isEnabled() for b in buttons)  # 尚未收到任何狀態：視同鎖定
-
-    fake_worker.snapshot_ready.emit(make_snapshot(), status())
-    assert all(b.isEnabled() for b in buttons)
-
-    fake_worker.snapshot_ready.emit(
-        make_snapshot(), status(locked=True, operating=True, reasons=("有操作進行中",))
-    )
-    assert not any(b.isEnabled() for b in buttons)
-    assert "有操作進行中" in window.servo_on_button.toolTip()
-
+    assert fake_worker.calls == [("connect_plc",)]
+    for name in ("servo_on_button", "servo_off_button", "reset_button", "theme_button"):
+        assert not hasattr(window, name)
     fake_worker.snapshot_ready.emit(None, status(locked=True, connected=False))
-    assert not any(b.isEnabled() for b in buttons)
     assert window.reconnect_button.isEnabled()  # 重新連線不受鎖定影響
 
 
@@ -180,8 +152,66 @@ def test_estop_status(window, fake_worker, make_snapshot):
 # ---- 狀態列與事件 ----
 
 
-def test_status_bar_shows_poll_interval(window):
-    assert "200 ms" in window.poll_label.text()
+def test_status_bar_comm_timing(window, fake_worker):
+    bar = window.comm_indicator
+    assert bar.read_value.text() == "—"  # 尚未輪詢
+    fake_worker.connection_changed.emit(True)
+    fake_worker.poll_timed.emit(PollTiming(18.4, None, 37))
+    fake_worker.poll_timed.emit(PollTiming(42.0, 101.0, 37))
+    fake_worker.poll_timed.emit(PollTiming(20.0, 100.0, 37))
+    assert bar.read_value.text() == "20 ms"
+    assert bar.average_value.text() == "27 ms"
+    assert bar.max_value.text() == "42 ms"
+    assert bar.requests_value.text() == "37"
+    assert "10%" in bar.toolTip()  # 20 / 200 ms，只在滑鼠提示
+    assert not any("%" in w.text() for w in bar.findChildren(QLabel))  # 不顯示百分比數字
+    assert not bar.findChildren(QProgressBar)  # 不顯示進度條
+    assert bar.dot.property("state") == "ok"
+    fake_worker.poll_timed.emit(PollTiming(170.0, 200.0, 37))  # > 80 %
+    assert bar.dot.property("state") == "warn"
+    fake_worker.poll_timed.emit(PollTiming(230.0, 230.0, 37))  # > 週期
+    assert bar.dot.property("state") == "fault"
+    assert "115%" in bar.toolTip()
+
+
+def test_comm_dialog_stats_and_reset(window, fake_worker):
+    fake_worker.connection_changed.emit(True)
+    for ms in (10, 20, 30):
+        fake_worker.poll_timed.emit(PollTiming(float(ms), 200.0, 37))
+    window.comm_indicator.clicked.emit()
+    dialog = window.comm_dialog
+    assert dialog.isVisible()
+    assert dialog.tiles["average"].text() == "20 ms"
+    assert dialog.tiles["minimum"].text() == "10 ms"
+    assert dialog.tiles["maximum"].text() == "30 ms"
+    assert dialog.tiles["count"].text() == "3"
+    assert dialog.verdict.property("state") == "ok"
+    assert "≥ 50 ms" in dialog.suggest_label.text()  # 30 × 1.5 = 45 → 最少 50
+    fake_worker.poll_timed.emit(PollTiming(250.0, 250.0, 37))  # 開著時即時更新
+    assert dialog.tiles["maximum"].text() == "250 ms"
+    assert dialog.verdict.property("state") == "fault"
+    fake_worker.connection_changed.emit(False)
+    assert dialog.tiles["disconnects"].text() == "1"
+    fake_worker.connection_changed.emit(True)  # 重新連線：時間統計歸零，斷線次數保留
+    assert dialog.tiles["count"].text() == "0"
+    assert dialog.tiles["disconnects"].text() == "1"
+    dialog.reset_button.click()
+    assert dialog.tiles["disconnects"].text() == "0"
+    dialog.close()
+
+
+def test_comm_stats_rules():
+    stats = CommStats()
+    assert stats.suggested_interval() is None
+    assert stats.verdict(100)[0] == "off"
+    for ms in range(1, 101):  # 1 ~ 100 ms
+        stats.add(PollTiming(float(ms), 100.0, 5))
+    assert stats.p95 == 95.0
+    assert stats.suggested_interval() == 150  # 95 × 1.5 = 142.5 → 取整到 10 ms
+    assert stats.verdict(200)[0] == "ok"
+    assert stats.verdict(115)[0] == "warn"  # 95 > 115 × 0.8
+    assert stats.verdict(99)[0] == "fault"  # 最大 100 > 99
+    assert [load_state(v, 100) for v in (80, 81, 100, 101)] == ["ok", "warn", "warn", "fault"]
 
 
 def test_command_rejected_shows_every_reason(window, fake_worker):
@@ -254,21 +284,13 @@ def test_message_history_shows_full_content(window, fake_worker):
 # ---- 主題 ----
 
 
-def test_theme_toggle_applies_and_saves(window, config_dir: Path):
-    app = QApplication.instance()
-    apply_theme(app, "dark")
-    window.theme_button.click()
-    assert app.styleSheet() == load_qss("light")
-    assert load_config(config_dir).device.theme == "light"
-    text = (config_dir / "device.toml").read_bytes().decode("utf-8")
-    assert "# 主題：dark 或 light" in text and "# 預設深色" in text  # 註解保留
-    window.theme_button.click()
-    assert app.styleSheet() == load_qss("dark")
-    assert load_config(config_dir).device.theme == "dark"
+def test_single_dark_theme():
+    """只有深色主題：QSS 只有一份，沒有淺色。"""
+    from importlib import resources
 
-
-def test_themes_differ():
-    assert load_qss("dark") != load_qss("light")
+    files = {p.name for p in resources.files("plc_motion.ui").joinpath("themes").iterdir()}
+    assert "light.qss" not in files
+    assert "#16191d" in load_qss()
 
 
 # ---- 縮到系統匣 ----

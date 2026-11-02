@@ -2,16 +2,16 @@
 
 import pytest
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QApplication, QMessageBox
-from ui_support import answer_next_message_box, status
+from PySide6.QtWidgets import QApplication
+from ui_support import status
 
 from plc_motion.app import MotionApp
 from plc_motion.plc import ModelPort, PlcModel
 from plc_motion.settings import load_config
 from plc_motion.settings.io_points import Access, CheckStatus, load_io_points
 from plc_motion.sim import SimServer
-from plc_motion.ui.io_monitor import NAME_COL, VALUE_COL, IoMonitorPage
-from plc_motion.ui.theme import apply_theme, color
+from plc_motion.ui.io_monitor import DESC_COL, NAME_COL, STRIPE_COL, VALUE_COL, IoMonitorPage
+from plc_motion.ui.theme import color
 from plc_motion.ui.value_dialog import ValueDialog
 
 RO, RW = Access.READ_ONLY, Access.READ_WRITE
@@ -120,6 +120,35 @@ def test_points_split_by_kind_and_access(page):
     assert "Speed 1" not in tags_in(page, "digital", RW)
 
 
+def test_columns_are_stripe_name_description_value(page):
+    """不顯示 Tag Name、Check Status 欄；色條之後依序為名稱、描述、值。"""
+    for table in page.tables.values():
+        headers = [table.horizontalHeaderItem(c).text() for c in range(table.columnCount())]
+        assert headers == ["", "名稱", "描述", "值"]
+    assert (STRIPE_COL, NAME_COL, DESC_COL, VALUE_COL) == (0, 1, 2, 3)
+
+
+def test_no_reset_all_button(page):
+    from PySide6.QtWidgets import QPushButton
+
+    texts = [b.text() for b in page.findChildren(QPushButton)]
+    assert not any("重設" in t for t in texts)
+
+
+def test_plc_location_drops_leading_underscore(
+    qtbot, config_dir, io_rows, write_io_points, fake_worker
+):
+    for row in io_rows:
+        if row["Tag Name"] == "Ready 1":
+            row["Description"] = "_M22"
+        if row["Tag Name"] == "Busy 1":
+            row["Description"] = "Y20"
+    write_io_points(config_dir, io_rows)
+    page = make_page(qtbot, load_config(config_dir), fake_worker)
+    assert cell(page, "Ready 1", DESC_COL).text() == "M22"
+    assert cell(page, "Busy 1", DESC_COL).text() == "Y20"
+
+
 def test_rows_follow_file_order(page):
     rw = tags_in(page, "digital", RW)
     assert rw.index("Servo Motor 1") < rw.index("Reset Alarm 1") < rw.index("Servo Motor 2")
@@ -152,8 +181,9 @@ def test_position_shows_scaled_value_and_unit(page, fake_worker, make_snapshot):
 
 def test_boolean_lamp_follows_raw(page, fake_worker, make_snapshot):
     enable(fake_worker, make_snapshot({"Servo Motor 1": True}))
-    assert cell(page, "Servo Motor 1", VALUE_COL).foreground().color() == color("ok")
-    assert cell(page, "Servo Motor 2", VALUE_COL).foreground().color() == color("off")
+    on, off = cell(page, "Servo Motor 1", VALUE_COL), cell(page, "Servo Motor 2", VALUE_COL)
+    assert on.text().endswith("ON") and on.foreground().color() == color("ok")
+    assert off.text().endswith("OFF") and off.foreground().color() == color("text_dim")
 
 
 def test_no_snapshot_shows_placeholder(page, fake_worker):
@@ -258,13 +288,21 @@ def test_no_snapshot_double_click_does_not_write(qtbot, page, fake_worker):
 # ---- Check Status ----
 
 
-def test_set_check_status_updates_color_counts_and_file(page, config):
+def stripe(page, tag):
+    return cell(page, tag, STRIPE_COL).background().color()
+
+
+def test_set_check_status_colors_stripe_only_counts_and_file(page, config):
     total = len(visible_tags(page))
     assert page.count_labels[CheckStatus.UNCHECKED].text() == f"Unchecked {total}"
+    plain = cell(page, "Ready 1", NAME_COL).background()
     page.check_status_menu("Ready 1").actions()[1].trigger()  # NG
     assert saved_status(config, "Ready 1") == CheckStatus.NG
     assert saved_status(config, "Busy 1") == CheckStatus.UNCHECKED
-    assert cell(page, "Ready 1", NAME_COL).background().color() == color("check_ng")
+    assert stripe(page, "Ready 1") == color("fault")
+    assert stripe(page, "Busy 1") == color("off")
+    for col in (NAME_COL, DESC_COL, VALUE_COL):  # 整列不上底色
+        assert cell(page, "Ready 1", col).background() == plain
     assert page.count_labels[CheckStatus.NG].text() == "NG 1"
     assert page.count_labels[CheckStatus.UNCHECKED].text() == f"Unchecked {total - 1}"
 
@@ -272,27 +310,6 @@ def test_set_check_status_updates_color_counts_and_file(page, config):
 def test_check_status_menu_lists_five_states(page):
     texts = [a.text() for a in page.check_status_menu("Speed 1").actions()]
     assert texts == ["OK", "NG", "Unchecked", "Recheck", "Ignore"]
-
-
-def test_reset_all_after_confirm(page, config):
-    page.set_check_status("Ready 1", CheckStatus.OK)
-    page.set_check_status("Speed 1", CheckStatus.RECHECK)
-    seen: list = []
-    answer_next_message_box(QMessageBox.StandardButton.Yes, seen)
-    page.reset_button.click()
-    assert seen
-    assert saved_status(config, "Ready 1") == CheckStatus.UNCHECKED
-    assert saved_status(config, "Speed 1") == CheckStatus.UNCHECKED
-    assert page.count_labels[CheckStatus.OK].text() == "OK 0"
-    assert cell(page, "Ready 1", NAME_COL).background().color() == color("check_unchecked")
-
-
-def test_reset_all_cancel_keeps_status(page, config):
-    page.set_check_status("Ready 1", CheckStatus.OK)
-    answer_next_message_box(QMessageBox.StandardButton.No)
-    page.reset_button.click()
-    assert saved_status(config, "Ready 1") == CheckStatus.OK
-    assert page.count_labels[CheckStatus.OK].text() == "OK 1"
 
 
 def test_initial_status_from_file_is_colored(
@@ -303,28 +320,26 @@ def test_initial_status_from_file_is_colored(
             row["Check Status"] = "Recheck"
     write_io_points(config_dir, io_rows)
     page = make_page(qtbot, load_config(config_dir), fake_worker)
-    assert cell(page, "Busy 2", NAME_COL).background().color() == color("check_recheck")
+    assert stripe(page, "Busy 2") == color("warn")
     assert page.count_labels[CheckStatus.RECHECK].text() == "Recheck 1"
-
-
-def test_theme_switch_recolors_rows(page):
-    app = QApplication.instance()
-    try:
-        apply_theme(app, "dark")
-        page.set_check_status("Ready 1", CheckStatus.NG)
-        assert cell(page, "Ready 1", NAME_COL).background().color() == color("check_ng", "dark")
-        apply_theme(app, "light")
-        assert cell(page, "Ready 1", NAME_COL).background().color() == color("check_ng", "light")
-    finally:
-        apply_theme(app, "dark")
 
 
 # ---- 搜尋 ----
 
 
-def test_search_filters_tag_name(page):
+def test_search_ignores_tag_name(page):
     page.search.setText("servo motor 1")
-    assert visible_tags(page) == {"Servo Motor 1"}
+    assert visible_tags(page) == set()  # 只搜名稱；Tag Name 不顯示也不搜
+
+
+def test_search_matches_tag_shown_as_name(qtbot, config_dir, io_rows, write_io_points, fake_worker):
+    for row in io_rows:
+        if row["Tag Name"] == "Ready 1":
+            row["Display Name"] = ""  # 名稱欄顯示 Tag Name，就能用它搜到
+    write_io_points(config_dir, io_rows)
+    page = make_page(qtbot, load_config(config_dir), fake_worker)
+    page.search.setText("ready 1")
+    assert visible_tags(page) == {"Ready 1"}
 
 
 def test_search_filters_display_name(page):

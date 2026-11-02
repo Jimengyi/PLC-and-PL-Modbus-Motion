@@ -240,40 +240,56 @@ class Harness:
         self.qtbot.mouseClick(widget, Qt.MouseButton.LeftButton)
 
     def click_row(self, n: int) -> None:
-        """點選總覽中的一列（名稱欄）為選定軸。"""
-        label = self.app.axis_page.rows[n].name_label
-        self.qtbot.mouseClick(label, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
+        """點選第 n 軸的位置卡為選定軸。"""
+        card = self.app.axis_page.cards[n]
+        self.qtbot.mouseClick(card, Qt.MouseButton.LeftButton, pos=QPoint(5, 5))
 
-    def set_checked(self, axes) -> None:
-        for n, row in self.app.axis_page.rows.items():
-            if row.check.isChecked() != (n in axes):
-                self.click(row.check)
+    SCRATCH_POINT = 199  # P200：多軸移動用的暫存點位
 
     def move(self, targets: dict[int, float], relative: bool = False, speed: int = 50) -> None:
-        """在軸控頁勾選軸、填目標值、選模式與速度後按「執行勾選軸移動」。"""
+        """單軸：選定軸的目標位置＋「移動」；多軸：寫進 P200 後用點位表「移動到此點」。
+
+        確認視窗由 `confirms` fixture 自動回答確認。多軸只支援絕對移動（介面只有點位表能多軸）。
+        """
         page = self.app.axis_page
-        self.set_checked(targets)
-        for n, value in targets.items():
-            page.rows[n].target.setValue(value)
-        self.click(page.relative_button if relative else page.absolute_button)
-        page.move_speed.setValue(speed)
-        self.click(page.move_button)
+        if len(targets) == 1:
+            ((n, value),) = targets.items()
+            self.click_row(n)
+            self.click(page.relative_button if relative else page.absolute_button)
+            page.target.setValue(value)
+            page.jog_pad.speed.setValue(speed)
+            self.click(page.move_button)
+            return
+        assert not relative, "多軸移動只有點位表，只能絕對"
+        panel = page.points_panel
+        fields = {1: "x", 2: "y", 3: "z", 4: "rx", 5: "ry", 6: "rz", 7: "lift"}
+        point_id = panel._positions.rows()[self.SCRATCH_POINT].point_id
+        panel._positions.update(point_id, **{fields[n]: v for n, v in targets.items()})
+        panel.reload()
+        panel.table.selectRow(self.SCRATCH_POINT)
+        for n, chip in panel.axis_checks.items():
+            if chip.isChecked() != (n in targets):
+                self.click(chip)
+        panel.speed.setValue(speed)
+        self.click(panel.move_button)
 
     def write_controls(self) -> dict[str, QWidget]:
         page = self.app.axis_page
+        panel = page.points_panel
         controls: dict[str, QWidget] = {
-            "全部 Servo ON": self.app.window.servo_on_button,
-            "全部 Servo OFF": self.app.window.servo_off_button,
-            "全部 Reset Alarm": self.app.window.reset_button,
-            "執行勾選軸移動": page.move_button,
-            "勾選軸原點復歸": page.home_checked_button,
+            "全部 Servo ON": page.servo_on_button,
+            "全部 Servo OFF": page.servo_off_button,
+            "全部 Reset Alarm": page.reset_button,
+            "目標位置移動": page.move_button,
             "單軸原點復歸": page.home_one_button,
             "全部原點復歸": page.home_all_button,
             "JOG −": page.jog_minus,
             "JOG ＋": page.jog_plus,
-            "點位移動": page.points_panel.move_button,
-            "存入目前位置": page.points_panel.save_button,
-            "匯入點位": page.points_panel.import_button,
+            "點位移動": panel.move_button,
+            "存入目前位置": panel.save_button,
+            "編輯點位": panel.edit_button,
+            "清除點位": panel.clear_button,
+            "匯入點位": panel.import_button,
         }
         for (n, d), button in page.jog_pad.step_buttons.items():
             controls[f"步進 {n}{'+' if d > 0 else '-'}"] = button

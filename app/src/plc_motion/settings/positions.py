@@ -141,6 +141,10 @@ class PositionTable:
         atomic_write_bytes(self._path, _serialize(new_rows))
         self._rows = new_rows
 
+    def clear(self, point_id: str) -> None:
+        """名稱、七軸座標與說明清空（座標為 0），立即存檔。"""
+        self.update(point_id, name="", description="", **dict.fromkeys(_COORD_FIELDS, 0.0))
+
     def import_file(self, path: Path) -> list[str]:
         try:
             data = Path(path).read_bytes()
