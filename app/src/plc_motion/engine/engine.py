@@ -19,6 +19,7 @@ PlcPort 寫入失敗的 PlcCommError 不在此攔截，由呼叫端視為通訊�
 
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field
+from enum import Enum, auto
 from types import MappingProxyType
 
 from plc_motion.codec import decimals_for, to_raw
@@ -58,6 +59,13 @@ JOG_TAGS = {+1: "JOG Plus", -1: "JOG Minus"}  # JOG 方向 → 點位名稱（�
 Listener = Callable[[EngineEvent], None]
 
 
+class _ResetPhase(Enum):
+    """Reset Alarm 交握的階段（相當於 LabVIEW 狀態機的 enum）。"""
+
+    PULSING = auto()  # 已寫 Reset Alarm = 1，等脈衝時間到
+    WAITING = auto()  # 已寫 Reset Alarm = 0，等 PLC 清掉 Alarm 並回到 Ready
+
+
 class _ResetHandshake:
     """單軸異常復歸（FR-25；規格書 2.4）：Reset Alarm 1 → 脈衝時間後 0 → 等 Alarm = 0 且 Ready = 1。
 
@@ -66,7 +74,7 @@ class _ResetHandshake:
 
     介面與 AxisHandshake 相同（start／advance／abort／axis／result），
     所以 MotionEngine 可以用同一套流程推進兩種交握。
-    狀態只有兩段，以 `_pulsing` 區分：True 為脈衝中（Reset Alarm = 1），False 為等待 PLC 復歸。
+    狀態只有兩段（_ResetPhase）：PULSING 為脈衝中（Reset Alarm = 1），WAITING 為等待 PLC 復歸。
     """
 
     def __init__(
@@ -83,13 +91,13 @@ class _ResetHandshake:
         self._pulse_s = pulse_s
         self._timeout_s = timeout_s
         self._tag = f"Reset Alarm {axis}"
-        self._pulsing = False
-        self._since = 0.0  # 脈衝中：寫 1 的時間；等待中：寫 0 的時間
+        self.phase: _ResetPhase | None = None  # None：尚未 start()
+        self._since = 0.0  # PULSING：寫 1 的時間；WAITING：寫 0 的時間
         self.result: AxisResult | None = None
 
     def start(self) -> None:
         self._port.write(self._tag, True)
-        self._pulsing = True
+        self.phase = _ResetPhase.PULSING
         self._since = self._clock()
 
     def abort(self, result: AxisResult) -> None:
@@ -98,23 +106,26 @@ class _ResetHandshake:
             self.result = result
 
     def advance(self, snapshot: Snapshot) -> AxisResult | None:
-        if self.result is not None:
+        """每輪輪詢呼叫一次；回傳 None 表示還在進行，回傳 AxisResult 表示已結束。"""
+        if self.phase is None or self.result is not None:
             return None
         elapsed = self._clock() - self._since
-        if self._pulsing:
-            # 第一段：脈衝時間到才寫 0，並把計時改成從寫 0 起算
-            if elapsed >= self._pulse_s:
-                self._port.write(self._tag, False)
-                self._pulsing = False
-                self._since = self._clock()
-            return None  # 本輪快照早於寫 0，下一輪才判斷
-        # 第二段：等 PLC 清掉 Alarm 並回到 Ready；逾時就判定復歸失敗
-        st = snapshot.axis(self.axis)
-        if st.alarm_code == 0 and st.ready:
-            self.result = AxisResult(ResultKind.RESET_OK)
-        elif elapsed >= self._timeout_s:
-            self.result = AxisResult(ResultKind.RESET_FAIL)
-        return self.result
+        match self.phase:  # 相當於 LabVIEW 的 Case Structure
+            case _ResetPhase.PULSING:
+                # 脈衝時間到才寫 0，並把計時改成從寫 0 起算
+                if elapsed >= self._pulse_s:
+                    self._port.write(self._tag, False)
+                    self.phase = _ResetPhase.WAITING
+                    self._since = self._clock()
+                return None  # 本輪快照早於寫 0，下一輪才判斷
+            case _ResetPhase.WAITING:
+                # 等 PLC 清掉 Alarm 並回到 Ready；逾時就判定復歸失敗
+                st = snapshot.axis(self.axis)
+                if st.alarm_code == 0 and st.ready:
+                    self.result = AxisResult(ResultKind.RESET_OK)
+                elif elapsed >= self._timeout_s:
+                    self.result = AxisResult(ResultKind.RESET_FAIL)
+                return self.result
 
 
 Handshake = AxisHandshake | _ResetHandshake  # 兩種交握共用的型別名稱

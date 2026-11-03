@@ -132,9 +132,10 @@ class AxisHandshake:
         每輪輪詢由 MotionEngine 呼叫一次，相當於 LabVIEW 狀態機的一次迴圈。判斷順序：
             1. 尚未開始或已結束：不動作
             2. 急停、Alarm：不論在哪個階段都立刻結束
-            3. 依目前階段檢查 PLC 訊號，條件成立就寫下一個點並前進一格；
-               不成立時檢查是否逾時
-            4. 等完成階段：檢查軸是否動作完畢
+            3. match／case（相當於 Case Structure）：依目前階段檢查 PLC 訊號，
+               條件成立就寫下一個點並前進一格
+            4. 三個等待點共用的逾時判斷
+            5. 等完成階段：檢查軸是否動作完畢
         """
         # 1. 尚未 start() 或已有結果
         if self.phase in (None, Phase.FINISHED):
@@ -152,27 +153,35 @@ class AxisHandshake:
                 AxisResult(ResultKind.ALARM, alarm_code=st.alarm_code), write_back=early
             )
 
-        # 3. 每個分支都要同時符合「目前階段」與「PLC 訊號」；用 elif 串起來，每輪最多前進一格
-        if self.phase == Phase.WAIT_COPY and st.plc_action_code == self.code:
-            # PLC 已把命令碼複製回來，表示收到命令 → 送出 Request
-            self._port.write(self._tag("Request"), True)
-            self._enter(Phase.WAIT_REPLY_ON)
-        elif self.phase == Phase.WAIT_REPLY_ON and st.reply:
-            # PLC 回 Reply = 1，表示已接受命令 → PC 端歸零
-            self._clear_request()
-            self._enter(Phase.WAIT_REPLY_OFF)
-        elif self.phase == Phase.WAIT_REPLY_OFF and not st.reply:
-            # PLC 看到 Request = 0 後把 Reply 也清 0 → 交握完成，開始等軸動作結束
-            self._enter(Phase.WAIT_DONE)
-        elif self.phase in _WAIT_POINTS and self._clock() - self._since >= self._timeout_s:
-            # 上面三個條件都不成立才會走到這裡：仍在等待點上且已逾時
-            # 三個等待點共用這一段，不必各寫一份
+        # 3. 依目前階段處理（相當於 LabVIEW 的 Case Structure）；
+        #    每個 case 只看自己等的訊號，條件成立才前進一格，所以每輪最多前進一格
+        match self.phase:
+            case Phase.WAIT_COPY:
+                if st.plc_action_code == self.code:
+                    # PLC 已把命令碼複製回來，表示收到命令 → 送出 Request
+                    self._port.write(self._tag("Request"), True)
+                    self._enter(Phase.WAIT_REPLY_ON)
+            case Phase.WAIT_REPLY_ON:
+                if st.reply:
+                    # PLC 回 Reply = 1，表示已接受命令 → PC 端歸零
+                    self._clear_request()
+                    self._enter(Phase.WAIT_REPLY_OFF)
+            case Phase.WAIT_REPLY_OFF:
+                if not st.reply:
+                    # PLC 看到 Request = 0 後把 Reply 也清 0 → 交握完成，開始等軸動作結束
+                    self._enter(Phase.WAIT_DONE)
+            case Phase.WAIT_DONE:
+                pass  # 在下面第 5 步判斷，讓剛轉進 WAIT_DONE 的同一輪也能判斷
+
+        # 4. 三個等待點共用的逾時判斷，不必在每個 case 各寫一份。
+        #    本輪剛換到下一個階段時，_enter() 已重設計時，不會誤判逾時
+        if self.phase in _WAIT_POINTS and self._clock() - self._since >= self._timeout_s:
             return self._finish(
                 AxisResult(ResultKind.TIMEOUT, wait_point=_WAIT_POINTS[self.phase]),
                 write_back=True,
             )
 
-        # 4. 獨立的 if（不接在 elif 後面）：上面剛從 WAIT_REPLY_OFF 轉進 WAIT_DONE 時，
+        # 5. 等完成：放在 match 外面。上面剛從 WAIT_REPLY_OFF 轉進 WAIT_DONE 時，
         #    同一輪就接著檢查是否已完成，不必多等一輪
         if self.phase == Phase.WAIT_DONE:
             done = st.ready and not st.busy
