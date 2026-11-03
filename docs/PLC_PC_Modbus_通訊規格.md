@@ -98,8 +98,9 @@ Request / Reply 只負責「命令已被 PLC 接收」的交握；動作是否�
 - `Find_Home_Finish` 在以下情況變回 0：上電、按緊急停止、重新開始原點復歸、Servo OFF。發生異常不一定會讓它變回 0；原點復歸中發生異常時維持 0。
 - 原點復歸完成時，PLC 先設 `Busy = 0`，之後才設 `Find_Home_Finish = 1`。
 - PC 端等待規則（詳見 3.4 節）：
-  - 等待動作完成（軸移動、原點復歸）：不設逾時，無窮等待直到動作完成、`Alarm_Code ≠ 0` 或 `Emergency_Stop = 0`（按下緊急停止）。
+  - 等待動作完成（軸移動、原點復歸）：不設逾時，無窮等待直到動作完成、`Alarm_Code ≠ 0`、`Emergency_Stop = 0`（按下緊急停止），或與 PLC（Modbus TCP Slave）的通訊中斷。
   - 其他等待（命令碼複製、Request / Reply 交握、異常復歸）：逾時 5 秒。
+  - 通訊中斷：PC 每次輪詢都確認 PLC 仍有回應（Alive）；讀寫失敗、回應逾時（PC 端連線逾時設定，預設 2 秒）或 TCP 連線斷開，即判定通訊中斷。任何等待點遇到通訊中斷都立刻停止交握，以「通訊中斷」結束；此時已寫不到 PLC，不寫回 `Request`、`PC_Action_Code`，重新連線後由 PC 檢查是否有殘留的交握。PLC 端的動作不會因此停止，軸可能仍在移動，由 OP 按緊急停止。
 - PC 端輪詢週期預設 200 ms。
 
 ### 2.0.1 極限保護
@@ -248,9 +249,12 @@ sequenceDiagram
     rect rgba(128, 128, 128, 0.1)
     Note over PC,PLC: 動作執行與完成判斷
     Note over PLC: 軸移動中
-    loop 無窮輪詢直到 (Ready=1 且 Busy=0) 或 Alarm_Code≠0 或 Emergency_Stop=0
+    loop 無窮輪詢直到 (Ready=1 且 Busy=0) 或 Alarm_Code≠0 或 Emergency_Stop=0 或 通訊中斷
         PC->>PLC: 讀取 Ready(M) / Busy(M) / Alarm_Code(D) / Emergency_Stop(X)
         PLC-->>PC: Ready=0, Busy=1, Alarm_Code=0
+        break 通訊中斷
+            Note over PC: PLC 無回應（讀取失敗、逾時或連線斷開）<br/>交握停止<br/>不寫回 Request / PC_Action_Code<br/>軸可能仍在移動，提示 OP 按緊急停止
+        end
     end
     Note over PLC: 移動完成
     PLC->>PLC: Busy(M) = 0, Ready(M) = 1
@@ -355,18 +359,19 @@ sequenceDiagram
 
 ### 3.4 PC 端等待條件與逾時
 
-只有等待動作完成為無窮等待，其他等待點逾時皆為 5 秒。
+只有等待動作完成為無窮等待，其他等待點逾時皆為 5 秒。所有等待點遇到通訊中斷（PLC 無回應，見 2.0 節）都立刻結束。
 
 | 等待點 | 正常結束 | 異常結束 | 逾時 | 逾時處理 |
 |---|---|---|---|---|
 | 命令碼複製 | `PLC_Action_Code = PC_Action_Code` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 不發 Request，寫入 `PC_Action_Code = 0`，報錯：命令碼複製逾時 |
 | 等待 Reply = 1 | `Reply = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 寫入 `Request = 0`、`PC_Action_Code = 0`，報錯：PLC 未回覆 |
 | 等待 Reply = 0 | `Reply = 0` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 5 秒 | 報錯：交握未結束 |
-| 軸移動（Action Code 2） | `Ready = 1`、`Busy = 0` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 無（無窮等待） | - |
-| 原點復歸（Action Code 1） | `Ready = 1`、`Busy = 0`、`Find_Home_Finish = 1` | `Alarm_Code ≠ 0` 或 `Emergency_Stop = 0` | 無（無窮等待） | - |
+| 軸移動（Action Code 2） | `Ready = 1`、`Busy = 0` | `Alarm_Code ≠ 0`、`Emergency_Stop = 0` 或通訊中斷 | 無（無窮等待） | - |
+| 原點復歸（Action Code 1） | `Ready = 1`、`Busy = 0`、`Find_Home_Finish = 1` | `Alarm_Code ≠ 0`、`Emergency_Stop = 0` 或通訊中斷 | 無（無窮等待） | - |
 | 異常復歸 | `Alarm_Code = 0`、`Ready = 1` | - | 5 秒（自 `Reset_Alarm` OFF 起算） | 判定復歸失敗，顯示錯誤碼，由 OP 手動重新觸發 |
 
 - 交握在等待動作完成之前，因逾時或上表「異常結束」條件提早結束時，PC 一律寫入 `Request = 0`、`PC_Action_Code = 0`，避免 `Request` 卡在 1、命令碼殘留到下一次命令。
+- 例外：因通訊中斷結束時寫不到 PLC，不寫回；重新連線後，PC 讀到 `Request = 1` 或 `PC_Action_Code ≠ 0` 即視為殘留交握，經 OP 確認後才寫回 0。
 
 ```mermaid
 sequenceDiagram
@@ -395,10 +400,11 @@ sequenceDiagram
     end
     Note over PC: 逾時 → 報錯：交握未結束
 
-    loop 無窮等待：直到 (Ready=1 且 Busy=0) 或 Alarm_Code≠0 或 Emergency_Stop=0
+    loop 無窮等待：直到 (Ready=1 且 Busy=0) 或 Alarm_Code≠0 或 Emergency_Stop=0 或 通訊中斷
         PC->>PLC: 讀取 Ready(M) / Busy(M) / Alarm_Code(D) / Emergency_Stop(X)
         PLC-->>PC: Ready=0, Busy=1, Alarm_Code=0, Emergency_Stop=1
     end
+    Note over PC: PLC 無回應 → 通訊中斷，交握停止（不寫回）
 
     PC->>PLC: Reset_Alarm(M) ON 0.5 秒後 OFF
     loop 最多 5 秒：等待 Alarm_Code=0 且 Ready=1
