@@ -8,13 +8,16 @@ authors = [
 ]
 requires-python = ">=3.14"
 dependencies = [
-    "pymodbus>=3.16.1",
+    "pymodbus[serial]>=3.16.2,<3.17",
     "pyside6-essentials>=6.12.0",
 ]
 
 [project.scripts]
 plc-motion = "plc_motion:main"
 plc-sim = "plc_motion.sim.main:main"
+
+[tool.uv.build-backend]
+module-name = ["plc_motion", "lib.modbus_tags"]
 
 [build-system]
 requires = ["uv_build>=0.11.15,<0.12.0"]
@@ -39,6 +42,9 @@ addopts = "-m 'not slow'"
 [tool.ruff]
 line-length = 100
 target-version = "py314"
+
+[tool.ruff.format]
+exclude = ["*.md"]
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP"]
