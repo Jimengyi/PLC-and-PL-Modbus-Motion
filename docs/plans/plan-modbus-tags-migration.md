@@ -358,10 +358,11 @@ Related: `docs/specs/spec-modbus-tags-migration.md`、`docs/specs/spec-modbus-ma
 
 ---
 
-### Task 9: 打包、文件與整合驗收 [ ]
+### Task 9: 打包、文件與整合驗收 [x]
 
 Files:
-- Modify: `app/packaging/build.py`、`THIRD_PARTY_NOTICES.md`、`plc_motion.spec`
+- Modify: `app/packaging/build.py`、`app/packaging/THIRD_PARTY_NOTICES.md`（`plc_motion.spec` 不需修改：匯入分析已帶入 `lib.modbus_tags`）
+- Create: `app/packaging/pyserial-LICENSE.txt`
 - Modify: `docs/specs/spec-modbus-master-app.md`、`docs/design/design-system-blueprint.md`、`app/README.md`、`CLAUDE.md`
 - Create: `app/tests/test_no_qt_in_core.py`
 - Test: `app/tests/test_packaging.py`
@@ -379,11 +380,11 @@ Related: `docs/specs/spec-modbus-tags-migration.md` 的「主規格條文處置�
 測試 seam：`test_no_qt_in_core.py`、`pytest -m slow` 的打包測試。
 
 驗收：（契約層）
-- [ ] 自動測試掃描交握邏輯、通訊 adapter、快照與設定載入的匯入，出現 PySide6 就失敗；此測試在匯入 PySide6 的突變下會失敗。
-- [ ] 打包後的 exe 不帶 `plc_motion.sim` 也能啟動，連上 `plc-sim` 後可以讀到快照；輸出資料夾含 pyserial 授權聲明與新的 config 結構。（觀測：`uv run pytest -m slow`）
-- [ ] app 全套 `pytest`、`-m slow`、`ruff check`、`ruff format --check` 通過；已知的環境失敗（主規格 AC-33 前景鎖定）要列出並單獨確認，不靜默略過。
-- [ ] 實際啟動 `plc-motion` 與 `plc-sim`，截圖確認 IO Monitor 與軸控頁顯示正確。
-- [ ] Run: `uv run --system-certs pytest tests/test_no_qt_in_core.py -q && uv run --system-certs pytest -m slow -q` → 全綠
+- [x] 自動測試掃描交握邏輯、通訊 adapter、快照與設定載入的匯入，出現 PySide6 就失敗；此測試在匯入 PySide6 的突變下會失敗。
+- [x] 打包後的 exe 不帶 `plc_motion.sim` 也能啟動，連上 `plc-sim` 後可以讀到快照；輸出資料夾含 pyserial 授權聲明與新的 config 結構。（觀測：`uv run pytest -m slow`）
+- [x] app 全套 `pytest`、`-m slow`、`ruff check`、`ruff format --check` 通過；已知的環境失敗（主規格 AC-33 前景鎖定）要列出並單獨確認，不靜默略過。
+- [x] 實際啟動 `plc-motion` 與 `plc-sim`，截圖確認 IO Monitor 與軸控頁顯示正確。
+- [x] Run: `uv run --system-certs pytest tests/test_no_qt_in_core.py -q && uv run --system-certs pytest -m slow -q` → 全綠
 
 禁區：
 - 不修改 `docs/PLC_PC_Modbus_通訊規格.md`、`七軸_Modbus位址表.md`、xlsx。
