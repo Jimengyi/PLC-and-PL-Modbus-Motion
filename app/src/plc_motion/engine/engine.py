@@ -454,7 +454,10 @@ class MotionEngine:
             self._port.write(f"{JOG_TAGS[direction]} {axis}", False)
 
     def write_point(self, tag: str, value: int | float | bool | str) -> list[str]:
-        """IO Monitor 的單點寫入；值的範圍檢查由畫面負責。"""
+        """IO Monitor 的單點寫入。
+
+        範圍由畫面先檢查；漏網的範圍或型別錯誤由 Worker 攔截並記錄，不判定斷線。
+        """
         command = "IO 寫入"
         reasons = self.lock_reasons
         try:

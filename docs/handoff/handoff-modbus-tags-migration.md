@@ -28,13 +28,13 @@ related: ["[[plan-modbus-tags-migration]]", "[[spec-modbus-tags-migration]]", "[
 - 結束程式的最壞等待從約 29 秒縮到約 8.9 秒，公式只保留一份。
 - spec FR-23 補上：重新連線與未預期例外時，只要連線仍在且 JOG 按住中也先寫 0。
 
-## 未解問題（範圍外，不擋合併）
+## 未解問題
 
-- `sim/sim_log.py` 的值型別註記沒有涵蓋 float、str，不影響執行。
-- `engine.write_point` 的說明仍寫「範圍檢查由畫面負責」，實際上 Worker 也攔截範圍錯誤。
-- 主規格 FR-44 行尾寫死「約 8.9 秒」，預設逾時改動後會失真。
 - e2e 偶發 Qt 物件回收時機崩潰：Task 8 在 teardown 加清理緩解，根因未找到。
+- `test_worker.py::test_disconnect_does_not_auto_reconnect_even_if_device_toml_allows` 在多檔一起跑時失敗過一次，單獨跑 5 次、整檔跑 3 次都通過，屬時序不穩。
 - `PlcPort.read_all` 只剩 `ModelPort` 使用，介面是否收斂留待之後。
+
+已修（合併後的小修）：`sim_log.py` 型別註記涵蓋 float、str；`engine.write_point` 說明；主規格 FR-44 不再寫死秒數、FR-2 的 `connect_timeout_ms` 敘述。
 
 ## 下一步
 

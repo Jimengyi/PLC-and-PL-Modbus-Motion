@@ -57,7 +57,7 @@ related: ["[[design-modbus-master-app]]"]
 ### 設定檔
 
 - FR-1：設定檔放在 `config` 資料夾：打包後位於 exe 同層，從原始碼執行時位於 `app\config`。共五個檔：`device.toml`、`axes.toml`、`io_points.csv`、`positions.csv`、`read_ranges.toml`（可省略，見 FR-61）。（已修訂：設定檔改為新結構（`app.toml`、`axes.toml`、`positions.csv`、`modbus/Channel01/`），依 FR-6，見 [[spec-modbus-tags-migration]]）
-- FR-2：`device.toml` 至少包含：連線 host、port、連線逾時（ms）；輪詢週期（ms，預設 200）；交握逾時（秒，預設 5）；Reset_Alarm 脈衝時間（ms，預設 500）；日誌保留天數（預設 30）。（舊版的主題設定已移除，檔案裡留著不影響載入。）（已修訂：`[handshake]`、`[log]` 移到 `app.toml`；舊版 `[ui] theme` 不再相容；`connect_timeout_ms` 已無程式使用，連線逾時由通道 `timeout_ms` 決定，見 [[spec-modbus-tags-migration]]）
+- FR-2：`device.toml` 至少包含：連線 host、port、連線逾時（ms）；輪詢週期（ms，預設 200）；交握逾時（秒，預設 5）；Reset_Alarm 脈衝時間（ms，預設 500）；日誌保留天數（預設 30）。（舊版的主題設定已移除，檔案裡留著不影響載入。）（已修訂：`[handshake]`、`[log]` 移到 `app.toml`；舊版 `[ui] theme` 不再相容；連線逾時改由通道 `device.toml` 的 `timeout_ms` 決定（`DeviceSettings.connect_timeout_ms` 仍保留，由它填入），見 [[spec-modbus-tags-migration]]）
 - FR-3：`axes.toml` 每軸一段，包含：軸號（1 ~ 7）、顯示名稱、軟體極限最小值與最大值、步進長／中／短步距、預設速度（1 ~ 100）。數值單位與該軸的顯示單位相同（mm 或 deg）。
 - FR-4：`io_points.csv` 每列一個點，欄位為 Tag Name、Display Name、Start Address、Address Length、Unit ID、Data Model（Coil、Discrete Input、Holding Register）、Sensor Type（Boolean、U16、Position）、Access（Read Only、Read Write）、Visible（O 或 X）、Description、Attributes、Check Status（OK、NG、Unchecked、Recheck、Ignore）。（已修訂：欄位與型別改依 FR-9、FR-13（`Data Type`、`scale=…;unit=…`、`invert=true`），見 [[spec-modbus-tags-migration]]）
   - Tag Name 是唯一名稱；Display Name 留空時畫面顯示 Tag Name。
@@ -164,7 +164,7 @@ related: ["[[design-modbus-master-app]]"]
 - FR-60：通訊計時：每輪輪詢量測讀完全部位址的時間（依序送出所有讀取請求）與相鄰兩輪開始的間隔。狀態列顯示本次、平均、最大讀取時間、每輪請求筆數、設定的輪詢週期；左側燈號依本次讀取佔週期的比例變色（> 80 % 警告色、> 100 % 異常色），百分比只在滑鼠提示，不顯示進度條與百分比數字。點狀態列開「通訊品質」視窗：結論、最近 300 輪讀取時間曲線（標出週期與 80 % 線）、本次／平均／最小／最大／95 % 落點、實際週期平均、斷線次數、統計輪數，以及建議週期（95 % 讀取時間 × 1.5，取整到 10 ms，最少 50 ms）。統計在每次連線與按「重新統計」時歸零，斷線次數只在「重新統計」時歸零。輪詢週期只在 `device.toml` 調整，畫面不提供修改。（已修訂：週期計算依遷移 spec FR-18，見 [[spec-modbus-tags-migration]]）
 - FR-42：最小化與按右上角關閉都縮到系統匣，輪詢繼續。系統匣右鍵選單：顯示主視窗、重新連線、結束；雙擊圖示叫回主視窗。
 - FR-43：系統匣圖示為六角形（六軸平台），外框與中心點顏色依狀態：正常、有軸動作中、Alarm 或急停、未連線；狀態另以形狀區分（動作中中心 ▶、異常中心「!」、未連線外框在角上斷開）。「正常」版本同時是主視窗與工作列的程式圖示。任一軸 Alarm Code 由 0 變非 0、或 Emergency Stop 由 1 變 0 時跳 Windows 通知。（已修訂：急停條件改讀為邏輯值，依 FR-26，見 [[spec-modbus-tags-migration]]）
-- FR-44：「結束」時若有軸 Busy = 1 或操作進行中，先確認；結束不寫入任何點。（已修訂：除 FR-27 視同放開的 JOG 寫 0 外，結束不寫入；已排入的寫入依遷移 spec FR-19；結束程式的最壞等待預設約 8.9 秒，見 [[spec-modbus-tags-migration]]）
+- FR-44：「結束」時若有軸 Busy = 1 或操作進行中，先確認；結束不寫入任何點。（已修訂：除 FR-27 視同放開的 JOG 寫 0 外，結束不寫入；已排入的寫入依遷移 spec FR-19；結束程式的最壞等待由 Worker 依通道設定計算，見 [[spec-modbus-tags-migration]]）
 - FR-45：只有一套工業風深色主題：中性灰底，顏色只用於狀態（運轉、警告、異常、選取）；數值使用等寬數字字型；按鈕高度至少約 34 px，主要操作更大。不提供主題切換。點位表與 IO Monitor 表格的已選取列為深藍底；滑鼠停留整列為淡灰底並在列頭加亮藍邊條，已選取列停留時深藍再亮一階。（2026-11-02 改版：原深淺色切換移除；同日加入表格停留標示。）
 - FR-46：同一台電腦只能執行一份 `plc-motion`；再次啟動時叫出已執行的主視窗，新的那份結束。
 - FR-47：介面文字為繁體中文。

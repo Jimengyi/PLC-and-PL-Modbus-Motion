@@ -38,7 +38,7 @@ class LogEntry:
     time: float  # time.time()，秒
     kind: Kind
     tag: str | None = None
-    value: int | bool | None = None
+    value: int | bool | float | str | None = None
     text: str = ""
 
     def format(self) -> str:
@@ -92,7 +92,7 @@ class SimLog:
         self,
         kind: Kind,
         tag: str | None = None,
-        value: int | bool | None = None,
+        value: int | bool | float | str | None = None,
         text: str = "",
     ) -> None:
         entry = LogEntry(self._clock(), kind, tag, value, text)
@@ -105,7 +105,7 @@ class SimLog:
             self._read_count += 1
             self._last_read = now
 
-    def on_model_change(self, tag: str, value: int | bool) -> None:
+    def on_model_change(self, tag: str, value: int | bool | float | str) -> None:
         """PlcModel listener：只記 FR-56 的狀態點；Master 寫入的點由寫入紀錄負責。"""
         if is_state_tag(tag):
             self.add("state", tag, value)
