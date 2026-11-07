@@ -439,6 +439,7 @@ EXTRA_ROWS = [
     _row("Door Closed", "320.b9", 1, _HR, "Bool", _RO, "invert=true"),
     _row("Aux Coil", 400, 1, "Coil", "Bool", _RW),
     _row("Aux DI", 400, 1, "Discrete Input", "Bool", _RO),
+    _row("Alarm Bit", "321.b2", 1, _HR, "Bool", _RO),
     _row("IR U16", 0, 1, _IR, "U16", _RO),
     _row("IR Bit", "1.b3", 1, _IR, "Bool", _RO, "invert=true"),
     _row("IR F32", 2, 2, _IR, "F32", _RO),
@@ -585,12 +586,41 @@ def test_inverted_register_bits_start_untriggered(multi):
     assert _registers(srv, 1, 1, "read_input_registers") == [1 << 3]
 
 
-def test_write_to_register_with_only_read_only_bits_is_illegal_address(multi):
-    srv, _ = multi
+def _client(srv: SimServer) -> ModbusTcpClient:
     c = ModbusTcpClient("127.0.0.1", port=srv.port, timeout=2, retries=0)
     assert c.connect()
-    # 改到唯讀位元（Door Closed，b9）的寫入被拒，其他位元也不變
-    rr = c.write_register(320, 1, device_id=0)
+    return c
+
+
+def test_write_to_register_with_only_read_only_bits_is_illegal_address(multi):
+    srv, _ = multi
+    c = _client(srv)
+    rr = c.write_register(321, 1 << 2, device_id=0)  # 321 只有唯讀的 Alarm Bit
     c.close()
     assert rr.isError() and rr.exception_code == ILLEGAL_ADDRESS
-    assert (_model(srv, "Lamp A"), _model(srv, "Door Closed")) == (False, True)
+    assert _model(srv, "Alarm Bit") is False
+
+
+def test_register_bit_write_with_stale_read_only_bit_succeeds(multi):
+    srv, _ = multi
+    # PLC 在 Master 讀與寫之間改了唯讀位元；Master 仍帶舊快照（b9 = 1）寫入可寫位元
+    _set(srv, "Door Closed", False)
+    c = _client(srv)
+    rr = c.write_register(320, (1 << 5) | (1 << 9), device_id=0)
+    c.close()
+    assert not rr.isError()
+    assert _model(srv, "Lamp B") is True
+    assert _model(srv, "Door Closed") is False  # 唯讀位元的差異被忽略
+
+
+def test_mask_write_register_changes_only_masked_bit(multi):
+    srv, _ = multi
+    _set(srv, "Lamp B", True)
+    c = _client(srv)
+    # FC22：result = (current AND and_mask) OR (or_mask AND NOT and_mask)，只改 b0
+    rr = c.mask_write_register(address=320, and_mask=0xFFFF & ~1, or_mask=1, device_id=0)
+    c.close()
+    assert not rr.isError()
+    assert _model(srv, "Lamp A") is True
+    assert _model(srv, "Lamp B") is True
+    assert _model(srv, "Door Closed") is True

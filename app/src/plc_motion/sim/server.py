@@ -7,7 +7,8 @@ pymodbus 的 asyncio server 與 `model.step()` 的固定週期掃描跑在同一
 暫存器內容由 PlcModel 的原始值以 modbus_tags 的 `encode`／`decode` 換算（spec FR-33）：多 Word 點
 依 `word_order`、`byte_swap` 排列（未設定為低位在前），不套用 `scale` 與 `invert`。暫存器位元點
 （`N.bK`）共用同一暫存器，讀取時由各位元點組成；寫入整個暫存器（FC6、FC16、FC22）時只更新可寫
-的位元點，改到唯讀位元的寫入回 Illegal Data Address。
+的位元點，唯讀位元帶來的值一律忽略（Master 讀改寫帶的是舊快照）；暫存器內全是唯讀位元時
+才回 Illegal Data Address。
 
 讀取 io_points 沒定義的位址回 Illegal Data Address；但有 read_ranges.toml 時（spec FR-62），
 範圍內的空號位址讀到 0，模擬實機 PLC 的元件本來就存在。寫入空號位址一律回例外。
@@ -177,20 +178,18 @@ class _Store:
             return ExcCodes.ILLEGAL_ADDRESS
         sim = self._sim
         with sim.lock:
-            changes = self._changes(cells, values)
-            if changes is None:
-                return ExcCodes.ILLEGAL_ADDRESS
-            for tag, value in changes.items():
+            for tag, value in self._changes(cells, values).items():
                 sim.model.master_write(tag, value)
                 sim.log.add("write", tag, sim.model.read(tag), _engineering_text(sim, tag))
         return None
 
     def _changes(
         self, cells: list[_Cell | None], values: Sequence[int] | Sequence[bool]
-    ) -> dict[str, RawValue] | None:
-        """寫入內容換成各點的新原始值，依位址順序；改到唯讀位元時回 None。
+    ) -> dict[str, RawValue]:
+        """寫入內容換成各點的新原始值，依位址順序。
 
-        暫存器位元只收值有改變的位元點：FC22 與讀改寫都會帶上整個暫存器，無從得知目標是哪一點。
+        暫存器位元只收值有改變的可寫位元點：FC22 與讀改寫都會帶上整個暫存器，無從得知目標是哪一點；
+        唯讀位元帶的是 Master 的舊快照，PLC 可能在讀與寫之間改過，一律忽略。
 
         同一點的 Word 合併為一次寫入，沒寫到的 Word 沿用目前內容。
         """
@@ -200,11 +199,11 @@ class _Store:
             assert cell is not None  # 寫入不接受空號位址（_lookup）
             if cell.register_bits:
                 for p in cell.points:
+                    if p.access != Access.READ_WRITE:
+                        continue
                     bit = bool((int(v) >> p.bit) & 1)
                     if bit == read(p.tag):
                         continue  # 只有值改變的位元算寫入：同一暫存器的其他位元點不記錄
-                    if p.access != Access.READ_WRITE:
-                        return None
                     out[p.tag] = bit
                 continue
             point = cell.points[0]
