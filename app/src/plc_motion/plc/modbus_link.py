@@ -3,6 +3,8 @@
 讀取依 `batching.plan_reads` 合併成數筆請求：有 read_ranges.toml 時照設定的範圍讀，
 否則自動分組、只讀 io_points 定義的位址；
 Position 點兩個 Word 低位在前、有號 I32。請求的 device_id 為點的 Unit ID。
+快照與寫入的值同 `Snapshot`：Bool 為邏輯值（依 `invert` 與 PLC 原始值互換），
+有 `scale` 的點讀出為工程值；寫入 Position 仍傳 raw I32。
 
 通訊失敗一律 raise `PlcCommError`：
 - 連線中斷、逾時：關閉連線，`connected` 變為 False；之後要重新 `connect()`
@@ -19,7 +21,7 @@ from lib.modbus_tags.config import ReadRange
 from plc_motion.codec import join_i32, split_i32
 from plc_motion.plc.batching import ReadBlock, plan_reads
 from plc_motion.plc.port import PlcCommError, PlcPort
-from plc_motion.plc.snapshot import Snapshot
+from plc_motion.plc.snapshot import Snapshot, to_logical
 from plc_motion.settings.io_points import IoPointTable, is_position, model_name
 
 
@@ -64,7 +66,7 @@ class ModbusLink(PlcPort):
     # ---- PlcPort ----
 
     def read_all(self) -> Snapshot:
-        values: dict[str, int | bool] = {}
+        values: dict[str, float | int | bool] = {}
         for block in self._blocks:
             first = block.points[0] if block.points else None
             rr = self._request(
@@ -84,7 +86,8 @@ class ModbusLink(PlcPort):
             raise PlcCommError("io_points 中沒有這個點", tag=tag) from None
         c, dev = self._client, p.unit_id
         if p.data_model == DataModel.COIL:
-            call = lambda: c.write_coil(p.start_address, bool(value), device_id=dev)  # noqa: E731
+            bit = bool(value) != p.invert
+            call = lambda: c.write_coil(p.start_address, bit, device_id=dev)  # noqa: E731
         elif p.data_model == DataModel.HOLDING_REGISTER and is_position(p):
             words = list(split_i32(int(value)))
             call = lambda: c.write_registers(p.start_address, words, device_id=dev)  # noqa: E731
@@ -138,17 +141,18 @@ class ModbusLink(PlcPort):
         )
 
 
-def _decode(block: ReadBlock, rr: ModbusPDU) -> dict[str, int | bool]:
-    out: dict[str, int | bool] = {}
+def _decode(block: ReadBlock, rr: ModbusPDU) -> dict[str, float | int | bool]:
+    out: dict[str, float | int | bool] = {}
     for p in block.points:
         i = p.start_address - block.start
         if block.data_model == DataModel.HOLDING_REGISTER:
             if is_position(p):
-                out[p.tag] = join_i32(rr.registers[i], rr.registers[i + 1])
+                raw = join_i32(rr.registers[i], rr.registers[i + 1])
             else:
-                out[p.tag] = rr.registers[i]
+                raw = rr.registers[i]
         else:
-            out[p.tag] = bool(rr.bits[i])
+            raw = bool(rr.bits[i])
+        out[p.tag] = to_logical(p, raw)
     return out
 
 

@@ -3,7 +3,7 @@
 from typing import Protocol, runtime_checkable
 
 from plc_motion.plc.model import PlcModel
-from plc_motion.plc.snapshot import Snapshot
+from plc_motion.plc.snapshot import Snapshot, to_logical
 
 
 class PlcCommError(Exception):
@@ -22,24 +22,31 @@ class PlcCommError(Exception):
 
 @runtime_checkable
 class PlcPort(Protocol):
-    def read_all(self) -> Snapshot: ...
-
     def write(self, tag: str, value: int | bool) -> None:
-        """寫入單一點；Position 點傳 raw I32，adapter 負責拆 Word。"""
+        """寫入單一點。Bool 為邏輯值，adapter 依 `invert` 換成 PLC 原始值；
+        Position 點傳 raw I32，adapter 負責拆 Word。"""
         ...
 
 
 class ModelPort(PlcPort):
-    """單元測試用：直接讀寫 PlcModel，不經 Modbus。"""
+    """單元測試用：直接讀寫 PlcModel，不經 Modbus。
+
+    PlcModel 存 PLC 原始值；在這裡與快照的邏輯值、工程值互換。
+    """
 
     def __init__(self, model: PlcModel):
         self._model = model
 
     def read_all(self) -> Snapshot:
         points = self._model.points
-        return Snapshot(points, {p.tag: self._model.read(p.tag) for p in points.all()})
+        return Snapshot(
+            points, {p.tag: to_logical(p, self._model.read(p.tag)) for p in points.all()}
+        )
 
     def write(self, tag: str, value: int | bool) -> None:
         if not self._model.has_tag(tag):
             raise PlcCommError("io_points 中沒有這個點", tag=tag)
+        point = self._model.points.get(tag)
+        if point.data_type == "Bool":
+            value = bool(value) != point.invert
         self._model.master_write(tag, value)

@@ -10,7 +10,6 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from plc_motion.codec import to_raw
-from plc_motion.plc.snapshot import is_triggered
 from plc_motion.settings.io_points import AXIS_COUNT, EMERGENCY_STOP, IoPointTable
 
 # 速度 100%、speed_factor 1 時的模擬最大速度（工程單位／秒：mm/s 或 deg/s）
@@ -119,7 +118,8 @@ class PlcModel:
         self._set(f"{name} {ax.n}", value)
 
     def _triggered(self, tag: str) -> bool:
-        return is_triggered(self._points.get(tag), self._values[tag])
+        """輸入點是否觸發：B 接點（invert）讀到 0 為觸發，A 接點讀到 1 為觸發。"""
+        return bool(self._values[tag]) != self._points.get(tag).invert
 
     def _estop_pressed(self) -> bool:
         return self._triggered(EMERGENCY_STOP)

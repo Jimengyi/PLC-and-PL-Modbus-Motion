@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox
 
 from lib.modbus_tags import Access
 from plc_motion.engine import ResultKind
+from plc_motion.engine.engine import REASON_ESTOP
 from plc_motion.settings.csvio import BOM
 from plc_motion.settings.io_points import CheckStatus
 from plc_motion.ui.io_monitor import NAME_COL, STRIPE_COL
@@ -409,3 +410,150 @@ def test_ac29_set_ng_by_context_menu_saves_and_survives_restart(e2e):
     table, row = app.io_page.locate("Ready 1")
     assert table.item(row, STRIPE_COL).background().color() == color("fault")
     assert app.io_page.count_labels[CheckStatus.NG].text() == "NG 1"
+
+
+# ---- 接點型式（migration spec AC-10、AC-27 ~ AC-29） ----
+
+ATTR_COL = 10
+
+
+def set_attributes(config_dir: Path, tag: str, attributes: str) -> None:
+    path = config_dir / "modbus" / "Channel01" / "io_points.csv"
+    records = read_csv(path)
+    csv_row(records, tag)[ATTR_COL] = attributes
+    write_csv(path, records)
+
+
+def io_lamp_on(e2e, tag: str) -> bool:
+    table, row = e2e.app.io_page.locate(tag)
+    return table.item(row, 3).text().endswith("ON")
+
+
+def jog_reasons(e2e, axis: int, direction: int) -> tuple[str, ...]:
+    """直接對 worker 下 JOG（略過畫面反灰），回傳拒絕理由；沒被拒時放開並回傳空 tuple。"""
+    ev = len(e2e.events)
+    e2e.app.worker.jog_press(axis, direction, 10)
+    e2e.settle(300)
+    rejected = e2e.rejected(ev)
+    if not rejected:
+        e2e.app.worker.jog_release(axis, direction)
+        e2e.settle(300)
+        return ()
+    return rejected[0].reasons
+
+
+def test_migration_ac27_b_contact_raw_one_lit_in_io_and_untriggered_on_axis_page(e2e):
+    started(e2e)
+    app = e2e.app
+    page = app.axis_page
+    lamp = page.selected_lamps["pos_limit"]
+    assert e2e.model("Positive Limit 1") is True  # B 接點未觸發：PLC 原始值 1
+    table, row = e2e.show_io("Positive Limit 1")
+    assert table.item(row, NAME_COL).text() == "X 軸正極限(B)"
+    e2e.until(lambda: io_lamp_on(e2e, "Positive Limit 1"))
+    assert lamp.caption == "+Limit(B)"
+    assert page.selected_lamps["neg_limit"].caption == "−Limit(B)"
+    assert page.selected_lamps["home_sensor"].caption == "Home Sensor"
+    assert lamp.property("state") == "off"
+    assert page.jog_plus.isEnabled()
+
+    e2e.sim_call("master_write", "Positive Limit 1", False)  # 原始值 0：觸發
+    e2e.until(lambda: not io_lamp_on(e2e, "Positive Limit 1"))
+    e2e.until(lambda: lamp.property("state") == "fault")
+    assert not page.jog_plus.isEnabled()
+    assert page.jog_minus.isEnabled()
+    assert jog_reasons(e2e, 1, 1) == ("第 1 軸（X）：正極限已觸發",)
+
+
+def test_migration_ac10_a_contact_limit_raw_one_triggers(request, e2e_config_dir):
+    set_attributes(e2e_config_dir, "Positive Limit 1", "")
+    e2e = request.getfixturevalue("e2e")
+    assert e2e.config.points.get("Positive Limit 1").invert is False
+    started(e2e)
+    page = e2e.app.axis_page
+    lamp = page.selected_lamps["pos_limit"]
+    assert e2e.model("Positive Limit 1") is False  # A 接點未觸發：原始值 0
+    assert lamp.caption == "+Limit"
+    assert "(B)" not in lamp.text()
+    assert lamp.property("state") == "off"
+    table, row = e2e.show_io("Positive Limit 1")
+    assert table.item(row, NAME_COL).text() == "X 軸正極限"
+
+    e2e.sim_call("master_write", "Positive Limit 1", True)
+    e2e.until(lambda: lamp.property("state") == "fault")
+    e2e.until(lambda: io_lamp_on(e2e, "Positive Limit 1"))
+    assert not page.jog_plus.isEnabled()
+    assert jog_reasons(e2e, 1, 1) == ("第 1 軸（X）：正極限已觸發",)
+
+
+def move_reasons(e2e) -> tuple[str, ...] | None:
+    """直接對 worker 下單軸移動；被拒回傳理由，否則等操作結束後回傳 None。"""
+    ev = len(e2e.events)
+    target = e2e.app.snapshot.axis(1).position + 1.0
+    e2e.app.worker.move({1: target}, False, 50)
+    e2e.until(lambda: e2e.rejected(ev) or e2e.finished(ev), 20000)
+    rejected = e2e.rejected(ev)
+    return rejected[0].reasons if rejected else None
+
+
+def test_migration_ac28_b_contact_estop_raw_zero_rejects_move(e2e):
+    started(e2e)
+    assert move_reasons(e2e) is None  # 原始值 1：未觸發，可以移動
+    e2e.sim_call("master_write", "Emergency Stop", False)
+    e2e.until(lambda: not e2e.app.snapshot.estop_ok)
+    assert move_reasons(e2e) == (REASON_ESTOP,)
+
+
+def test_migration_ac28_a_contact_estop_rejects_only_at_raw_one(request, e2e_config_dir):
+    set_attributes(e2e_config_dir, "Emergency Stop", "")
+    e2e = request.getfixturevalue("e2e")
+    started(e2e)
+    assert e2e.model("Emergency Stop") is False
+    assert move_reasons(e2e) is None
+    e2e.sim_call("master_write", "Emergency Stop", True)
+    e2e.until(lambda: not e2e.app.snapshot.estop_ok)
+    assert move_reasons(e2e) == (REASON_ESTOP,)
+
+
+def test_migration_ac29_inverted_coil_double_click_writes_inverse_raw(request, e2e_config_dir):
+    path = e2e_config_dir / "modbus" / "Channel01" / "io_points.csv"
+    records = read_csv(path)
+    records.append(
+        [
+            "Inv Coil",
+            "反相線圈",
+            "300",
+            "1",
+            "0",
+            "Coil",
+            "Bool",
+            "Read Write",
+            "O",
+            "_M300",
+            "invert=true",
+            "Unchecked",
+        ]
+    )
+    write_csv(path, records)
+    ranges = e2e_config_dir / "modbus" / "Channel01" / "read_ranges.toml"
+    text = ranges.read_text(encoding="utf-8")
+    ranges.write_text(text.replace('"20~84, 120~184"', '"20~84, 120~184, 300"'), encoding="utf-8")
+
+    e2e = request.getfixturevalue("e2e")
+    started(e2e)
+    table, row = e2e.show_io("Inv Coil")
+    assert table.item(row, NAME_COL).text() == "反相線圈(B)"
+    assert e2e.model("Inv Coil") is True  # 模擬器初始原始值 1
+    e2e.until(lambda: io_lamp_on(e2e, "Inv Coil"))
+
+    since = e2e.mark()
+    e2e.click_cell(table, row, NAME_COL, double=True)
+    e2e.wait_entry("write", "Inv Coil", False, since)  # 模擬器收到原始值 0
+    assert e2e.model("Inv Coil") is False
+    e2e.until(lambda: not io_lamp_on(e2e, "Inv Coil"))
+
+    since = e2e.mark()
+    e2e.click_cell(table, row, NAME_COL, double=True)
+    e2e.wait_entry("write", "Inv Coil", True, since)
+    assert e2e.model("Inv Coil") is True
+    e2e.until(lambda: io_lamp_on(e2e, "Inv Coil"))

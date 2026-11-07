@@ -57,6 +57,12 @@ _LAMPS = {
     "reply": ("Reply", "busy", lambda s: s.reply),
 }
 SELECTED_LAMPS = tuple(_LAMPS)
+# 感測點燈號 → Tag 名稱前綴；該軸的點 `invert=true` 時名稱加註「(B)」
+_SENSOR_TAGS = {
+    "pos_limit": "Positive Limit",
+    "neg_limit": "Negative Limit",
+    "home_sensor": "Home Sensor",
+}
 SELECTED_WIDTH, STEP_WIDTH = 396, 440
 _PLACEHOLDER = "—"
 
@@ -292,6 +298,9 @@ class AxisPage(QWidget):
         for m, card in self.cards.items():
             set_flag(card, "selected", m == n)
         self.selected_title.setText(f"{self._config.axes[n].name} 軸")
+        for key, prefix in _SENSOR_TAGS.items():
+            b_contact = self._config.points.axis_tag(prefix, n).invert
+            self.selected_lamps[key].caption = _LAMPS[key][0] + ("(B)" if b_contact else "")
         point = self._config.points.axis_tag("Current Position", n)
         limit = I32_MAX / point.scale
         self.target.setDecimals(decimals_for(point.scale))

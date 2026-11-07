@@ -3,8 +3,9 @@
 「數位」（Coil、Discrete Input）與「數值」（Holding Register）兩個分頁，每頁左欄 Read Only、
 右欄 Read Write；Visible = X 的點不顯示，列順序依 io_points.csv。
 
-- 每列：Check Status 細色條、名稱（B 接點加註「(B)」）、描述（Description 去掉開頭底線，
-  `_M22` 顯示為 `M22`）、目前值（Boolean 燈號＋ON／OFF、U16 數字、Position 換算值＋單位）。
+- 每列：Check Status 細色條、名稱（`invert=true` 加註「(B)」）、描述（Description 去掉開頭底線，
+  `_M22` 顯示為 `M22`）、目前值（Boolean 燈號為 PLC 原始值＋ON／OFF、U16 數字、
+  Position 換算值＋單位）。
 - Read Write 的點雙擊寫入：Boolean 切換，數值點開 `ValueDialog`。寫入走 worker 的
   `write_point`（Position 傳 raw）；鎖定或尚未取得 PLC 狀態時不寫入。
 - 右鍵選單設定 Check Status，立即經 `IoPointTable.save_check_status` 存檔；只改左側色條的
@@ -262,7 +263,8 @@ class IoMonitorPage(QWidget):
             return
         point = self._points.get(self.tag_at(table, row))
         if point.data_type == "Bool":
-            self._worker.write_point(point.tag, not bool(self._snapshot.raw(point.tag)))
+            # 寫入邏輯值的相反值：PLC 收到目前原始值的相反值，與 invert 無關
+            self._worker.write_point(point.tag, not self._snapshot.value(point.tag))
             return
         dialog = ValueDialog(point, self._snapshot.value(point.tag), self)
         accepted = dialog.exec() == ValueDialog.DialogCode.Accepted

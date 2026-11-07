@@ -203,6 +203,45 @@ def test_rw_boolean_double_click_toggles(qtbot, page, fake_worker, make_snapshot
     ]
 
 
+def add_inverted_coil(config_dir, io_rows, write_io_points):
+    io_rows.append(
+        {
+            **io_rows[0],
+            "Tag Name": "Inv Coil",
+            "Display Name": "反相線圈",
+            "Start Address": "500",
+            "Data Model": "Coil",
+            "Data Type": "Bool",
+            "Access": "Read Write",
+            "Attributes": "invert=true",
+        }
+    )
+    write_io_points(config_dir, io_rows)
+    return load_config(config_dir)
+
+
+def test_inverted_coil_lamp_shows_raw_and_double_click_writes_inverse_logical(
+    qtbot, config_dir, io_rows, write_io_points, fake_worker
+):
+    config = add_inverted_coil(config_dir, io_rows, write_io_points)
+    page = make_page(qtbot, config, fake_worker)
+    assert cell(page, "Inv Coil", NAME_COL).text() == "反相線圈(B)"
+    model = PlcModel(config.points)
+    model.master_write("Inv Coil", True)  # PLC 原始值 1，邏輯值 False
+    enable(fake_worker, ModelPort(model).read_all())
+    assert cell(page, "Inv Coil", VALUE_COL).text().endswith("ON")
+
+    double_click(qtbot, page, "Inv Coil")
+    # 寫入邏輯值 True，adapter 換算後 PLC 收到原始值 0（目前原始值的相反值）
+    assert fake_worker.calls == [("write_point", "Inv Coil", True)]
+
+    model.master_write("Inv Coil", False)
+    enable(fake_worker, ModelPort(model).read_all())
+    assert cell(page, "Inv Coil", VALUE_COL).text().endswith("OFF")
+    double_click(qtbot, page, "Inv Coil")
+    assert fake_worker.calls[-1] == ("write_point", "Inv Coil", False)
+
+
 def test_ro_double_click_does_nothing(qtbot, page, fake_worker, make_snapshot):
     enable(fake_worker, make_snapshot())
     double_click(qtbot, page, "Ready 1")
