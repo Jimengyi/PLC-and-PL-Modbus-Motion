@@ -195,7 +195,7 @@ Depends on: Task 2
 
 ---
 
-### Task 5: TagsLink [ ]
+### Task 5: TagsLink [x]
 
 Files:
 - Create: `app/src/plc_motion/plc/tags_link.py`
@@ -214,8 +214,8 @@ Related: `app/src/lib/modbus_tags/bus.py`、`channel.py`、`model.py`；`docs/de
 | `connect()` | 建立並啟動新 `Bus`，不阻塞；套用 host、port，且 `auto_reconnect` 一律關閉 |
 | `poll() -> Snapshot \| None` | 依序：先取最新快照、再查寫入失敗與連線狀態。有失敗或斷線 raise `PlcCommError`；狀態不是 CONNECTED 時回 `None`，第一輪快照要等 CONNECTED 才交出；已連線且有新快照時回傳；否則回 `None` |
 | `connected`、`connecting` | 目前狀態 |
-| `write(tag, value)` | 排入佇列後返回；未連線 raise `PlcCommError`；範圍或型別錯誤（`ValueOutOfRange`、`TypeError`、`ReadOnlyTag`）原樣拋出，不算通訊失敗 |
-| `write_wait(tag, value, timeout)` | 等結果，失敗或逾時 raise `PlcCommError` |
+| `write(tag, value)` | 排入佇列後返回；未連線 raise `PlcCommError`；範圍或型別錯誤（`ValueOutOfRange`、`TypeError`、`ReadOnlyTag`）原樣拋出，不算通訊失敗；io_points 沒有的 Tag raise `PlcCommError`（與 `ModelPort` 一致） |
+| `write_wait(tag, value, timeout)` | 等結果，失敗或逾時 raise `PlcCommError`；io_points 沒有的 Tag raise `PlcCommError` |
 | `drain(timeout)` | 等已排入的寫入有結果或逾時 |
 | `close()` | 先 `drain`，再停止 Bus；可重複呼叫 |
 | `request_count`、`read_ms`、`cycle_ms` | 通訊統計；`cycle_ms` 為相鄰快照時間差，第一輪為 `None` |
@@ -225,15 +225,15 @@ Related: `app/src/lib/modbus_tags/bus.py`、`channel.py`、`model.py`；`docs/de
 測試 seam：`TagsLink` 公開方法，對 `SimServer` 走真實 TCP；需要控制時序的驗收，以建構參數注入「建立 Bus 的方式」，不測 `Channel` 內部。
 
 驗收：（契約層）
-- [ ] 必要位置點寫入的 I32 與 PC 端換算值完全相同，涵蓋負值、三種倍率與 I32 邊界值。
-- [ ] 同一批寫入在模擬器的順序與呼叫順序相同。
-- [ ] `device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時，連線中斷後 `poll()` raise，之後不會自動連上。
-- [ ] 替身讓快照已更新且同時有寫入失敗：`poll()` raise，不回傳該快照。
-- [ ] 通道未完成新的一輪時連續呼叫 `poll()`：同一輪只回傳一次快照，之後回 `None`（判斷依 `Snapshot.time`；`Bus.snapshot()` 每次都回新物件）。
-- [ ] 替身讓第一輪快照已更新、狀態仍是 CONNECTING：`poll()` 回 `None`；狀態變成 CONNECTED 後才回傳該快照。
-- [ ] 寫入被拒時訊息含 Tag Name 與位址；批次讀取被拒時訊息含 Data Model 與位址範圍。
-- [ ] 佇列有寫入時呼叫 `close()`，模擬器收到這些寫入後連線才結束。
-- [ ] Run: `uv run --system-certs pytest tests/plc/test_tags_link.py -q` → 全綠
+- [x] 必要位置點寫入的 I32 與 PC 端換算值完全相同，涵蓋負值、三種倍率與 I32 邊界值。
+- [x] 同一批寫入在模擬器的順序與呼叫順序相同。
+- [x] `device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時，連線中斷後 `poll()` raise，之後不會自動連上。
+- [x] 替身讓快照已更新且同時有寫入失敗：`poll()` raise，不回傳該快照。
+- [x] 通道未完成新的一輪時連續呼叫 `poll()`：同一輪只回傳一次快照，之後回 `None`（判斷依 `Snapshot.time`；`Bus.snapshot()` 每次都回新物件）。
+- [x] 替身讓第一輪快照已更新、狀態仍是 CONNECTING：`poll()` 回 `None`；狀態變成 CONNECTED 後才回傳該快照。
+- [x] 寫入被拒時訊息含 Tag Name 與位址；批次讀取被拒時訊息含 Data Model 與位址範圍。
+- [x] 佇列有寫入時呼叫 `close()`，模擬器收到這些寫入後連線才結束。
+- [x] Run: `uv run --system-certs pytest tests/plc/test_tags_link.py -q` → 全綠
 
 禁區：
 - 不匯入 PySide6。不使用函式庫底線開頭的成員。
