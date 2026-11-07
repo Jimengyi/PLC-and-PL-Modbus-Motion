@@ -32,7 +32,14 @@ def dist() -> Path:
 
 def test_exe_and_default_config_are_present(dist: Path):
     assert (dist / "plc-motion.exe").is_file()
-    for name in ("device.toml", "axes.toml", "io_points.csv", "positions.csv", "read_ranges.toml"):
+    for name in (
+        "app.toml",
+        "axes.toml",
+        "positions.csv",
+        "modbus/Channel01/device.toml",
+        "modbus/Channel01/io_points.csv",
+        "modbus/Channel01/read_ranges.toml",
+    ):
         assert (dist / "config" / name).read_bytes() == (APP_DIR / "config" / name).read_bytes()
 
 
@@ -54,10 +61,12 @@ def test_theme_files_are_bundled(dist: Path):
 
 def test_license_notices_cover_bundled_packages(dist: Path):
     text = (dist / "THIRD_PARTY_NOTICES.md").read_text("utf-8")
-    for needle in ("PySide6", "Qt", "LGPL", "pymodbus", "Python"):
+    for needle in ("PySide6", "Qt", "LGPL", "pymodbus", "pyserial", "Python"):
         assert needle in text
     assert (dist / "licenses").is_dir()
     assert any((dist / "licenses").iterdir())
+    pyserial = (dist / "licenses" / "pyserial-LICENSE.txt").read_text("utf-8")
+    assert "Chris Liechti" in pyserial
     lgpl = (dist / "licenses" / "LGPL-3.0.txt").read_text("utf-8")
     assert "GNU LESSER GENERAL PUBLIC LICENSE" in lgpl
     gpl = (dist / "licenses" / "GPL-3.0.txt").read_text("utf-8")

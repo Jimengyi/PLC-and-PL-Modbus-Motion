@@ -153,12 +153,14 @@ def restore_theme():
     app.setStyleSheet(sheet)
 
 
-# ---- AC-2：設定錯誤 ----
+# ---- AC-2（spec FR-11）：設定錯誤 ----
+
+CHANNEL = "modbus/Channel01"
 
 
 def edit_io(config_dir: Path, tag: str, column: str, value: str | None) -> None:
     """改 io_points.csv 某點的某欄；value 為 None 時刪掉該列。"""
-    path = config_dir / "io_points.csv"
+    path = config_dir / CHANNEL / "io_points.csv"
     records = list(csv.reader(io.StringIO(path.read_bytes().decode("utf-8-sig"), newline="")))
     col = records[0].index(column)
     out = []
@@ -174,7 +176,7 @@ def edit_io(config_dir: Path, tag: str, column: str, value: str | None) -> None:
 
 
 def add_io(config_dir: Path, row: list[str]) -> None:
-    path = config_dir / "io_points.csv"
+    path = config_dir / CHANNEL / "io_points.csv"
     text = path.read_bytes().decode("utf-8-sig")
     buf = io.StringIO()
     csv.writer(buf, lineterminator="\r\n").writerow(row)
@@ -192,31 +194,8 @@ def write_bytes(config_dir: Path, name: str, data: bytes) -> None:
     (config_dir / name).write_bytes(data)
 
 
-def duplicate_tag(config_dir: Path) -> None:
-    add_io(
-        config_dir,
-        ["Ready 1", "", "400", "1", "0", "Coil", "Boolean", "Read Only", "O", "", "", "Unchecked"],
-    )  # noqa: E501
-
-
-def overlap(config_dir: Path) -> None:
-    add_io(
-        config_dir,
-        [
-            "Cylinder1 Up",
-            "",
-            "20",
-            "1",
-            "0",
-            "Coil",
-            "Boolean",
-            "Read Write",
-            "O",
-            "",
-            "",
-            "Unchecked",
-        ],
-    )  # noqa: E501
+def coil_row(tag: str, address: str, access: str = "Read Write") -> list[str]:
+    return [tag, "", address, "1", "0", "Coil", "Bool", access, "O", "", "", "Unchecked"]
 
 
 def positions_150_rows(config_dir: Path) -> None:
@@ -225,15 +204,85 @@ def positions_150_rows(config_dir: Path) -> None:
     path.write_bytes(BOM + "".join(lines[:151]).encode("utf-8"))
 
 
-# (編號, 製造錯誤, 錯誤視窗應含的字串)
-CONFIG_ERRORS = [
-    ("缺 device.toml", lambda d: (d / "device.toml").unlink(), ["缺少設定檔 device.toml"]),
-    ("缺 axes.toml", lambda d: (d / "axes.toml").unlink(), ["缺少設定檔 axes.toml"]),
-    ("缺 io_points.csv", lambda d: (d / "io_points.csv").unlink(), ["缺少設定檔 io_points.csv"]),
+def make_rtu(config_dir: Path) -> None:
+    path = config_dir / CHANNEL / "device.toml"
+    text = path.read_bytes().decode("utf-8")
+    start, end = text.index("[connection]"), text.index("[protocol]")
+    rtu = '[connection]\ntype = "rtu"\n\n[connection.rtu]\nport = "COM3"\nbaudrate = 9600\n'
+    rtu += 'parity = "N"\nstopbits = 1\n\n'
+    path.write_bytes((text[:start] + rtu + text[end:]).encode("utf-8"))
+
+
+def remove_column(config_dir: Path, column: str) -> None:
+    path = config_dir / CHANNEL / "io_points.csv"
+    records = list(csv.reader(io.StringIO(path.read_bytes().decode("utf-8-sig"), newline="")))
+    col = records[0].index(column)
+    buf = io.StringIO()
+    csv.writer(buf, lineterminator="\r\n").writerows([r[:col] + r[col + 1 :] for r in records])
+    path.write_bytes(BOM + buf.getvalue().encode("utf-8"))
+
+
+DEVICE = f"{CHANNEL}/device.toml"
+IO = f"{CHANNEL}/io_points.csv"
+RANGES = f"{CHANNEL}/read_ranges.toml"
+
+# (編號, 製造錯誤, 錯誤視窗應含的字串)；FR-11 第一層
+CONFIG_ERRORS_FIRST = [
+    # modbus_tags 回報的設定錯誤
+    ("缺 device.toml", lambda d: (d / DEVICE).unlink(), ["device.toml", "missing"]),
+    ("缺 io_points.csv", lambda d: (d / IO).unlink(), ["io_points.csv"]),
     (
         "device.toml 無法解析",
-        lambda d: write_bytes(d, "device.toml", b"[connection\nhost = \n"),
-        ["device.toml：格式無法解析"],
+        lambda d: write_bytes(d, DEVICE, b"[connection\nhost = \n"),
+        ["device.toml", "TOML syntax error"],
+    ),
+    (
+        "device.toml 舊格式的 [handshake]",
+        lambda d: replace_text(d, DEVICE, "[polling]", "[handshake]\ntimeout_s = 5\n\n[polling]"),
+        ["device.toml", "handshake", "unknown key"],
+    ),
+    (
+        "io_points.csv 無法解析",
+        lambda d: write_bytes(d, IO, b"\xff\xfe\x00"),
+        ["io_points.csv"],
+    ),
+    (
+        "Tag Name 重複",
+        lambda d: add_io(d, coil_row("Ready 1", "60")),
+        ["'Ready 1'", "already used"],
+    ),
+    (
+        "Data Model 打錯",
+        lambda d: edit_io(d, "Busy 2", "Data Model", "Coils"),
+        ["io_points.csv", "'Coils'"],
+    ),
+    (
+        "Data Type 打錯",
+        lambda d: edit_io(d, "Busy 2", "Data Type", "Boolean"),
+        ["io_points.csv", "'Boolean'"],
+    ),
+    (
+        "Access 打錯",
+        lambda d: edit_io(d, "Busy 2", "Access", "RW"),
+        ["io_points.csv", "'RW'"],
+    ),
+    (
+        "Attributes 語法",
+        lambda d: edit_io(d, "Positive Limit 1", "Attributes", "ON"),
+        ["io_points.csv", "'ON'"],
+    ),
+    (
+        "讀取範圍未涵蓋",
+        lambda d: add_io(d, coil_row("Cylinder1 Up", "300")),
+        ["read_ranges.toml", "'Cylinder1 Up'"],
+    ),
+    # app 的檔案
+    ("缺 app.toml", lambda d: (d / "app.toml").unlink(), ["缺少設定檔 app.toml"]),
+    ("缺 axes.toml", lambda d: (d / "axes.toml").unlink(), ["缺少設定檔 axes.toml"]),
+    (
+        "app.toml 無法解析",
+        lambda d: write_bytes(d, "app.toml", b"[handshake\ntimeout_s = \n"),
+        ["app.toml：格式無法解析"],
     ),
     (
         "axes.toml 無法解析",
@@ -241,26 +290,63 @@ CONFIG_ERRORS = [
         ["axes.toml：格式無法解析"],
     ),
     (
-        "io_points.csv 無法解析",
-        lambda d: replace_text(d, "io_points.csv", "Ready 1,", '"Ready 1,'),
-        ["io_points.csv：格式無法解析"],
+        "交握逾時",
+        lambda d: replace_text(d, "app.toml", "timeout_s = 5", "timeout_s = 0"),
+        ["app.toml", "timeout_s = 0", "須為正數"],
+    ),
+    (
+        "脈衝",
+        lambda d: replace_text(
+            d, "app.toml", "reset_alarm_pulse_ms = 500", "reset_alarm_pulse_ms = 0.5"
+        ),
+        ["app.toml", "reset_alarm_pulse_ms = 0.5", "須為正整數"],
+    ),
+    (
+        "日誌保留天數",
+        lambda d: replace_text(d, "app.toml", "retention_days = 30", "retention_days = 0"),
+        ["app.toml", "retention_days = 0", "須為正整數"],
     ),
     ("positions.csv 不是 200 列", positions_150_rows, ["positions.csv", "200 列", "150 列"]),
-    ("Tag Name 重複", duplicate_tag, ["Tag Name「Ready 1」", "重複"]),
     (
-        "Data Model 列舉",
-        lambda d: edit_io(d, "Busy 2", "Data Model", "Coils"),
-        ["Busy 2", "Data Model「Coils」"],
+        "軟體極限",
+        lambda d: replace_text(d, "axes.toml", "soft_limit_max = 100.0", "soft_limit_max = -100.0"),
+        ["軟體極限最小值 -100.0 不小於最大值 -100.0"],
     ),
     (
-        "Sensor Type 列舉",
-        lambda d: edit_io(d, "Busy 2", "Sensor Type", "Bool"),
-        ["Busy 2", "Sensor Type「Bool」"],
+        "步距",
+        lambda d: replace_text(d, "axes.toml", "step_short = ", "step_short = -", 1),
+        ["step_short", "須為正數"],
     ),
     (
-        "Access 列舉",
-        lambda d: edit_io(d, "Busy 2", "Access", "RW"),
-        ["Busy 2", "Access「RW」"],
+        "預設速度",
+        lambda d: replace_text(d, "axes.toml", "default_speed = 50", "default_speed = 101"),
+        ["default_speed = 101", "1 ~ 100"],
+    ),
+    # 通道資料夾
+    (
+        "Channel01 以外的資料夾",
+        lambda d: shutil.copytree(d / CHANNEL, d / "modbus" / "Channel02"),
+        ["Channel01 以外的資料夾", "Channel02"],
+    ),
+    (
+        "缺 Channel01",
+        lambda d: (d / CHANNEL).rename(d / "modbus" / "PLC"),
+        ["缺少通道資料夾 modbus/Channel01"],
+    ),
+    (
+        "Channel01 停用",
+        lambda d: replace_text(d, DEVICE, "enabled = true", "enabled = false"),
+        ["Channel01 被停用"],
+    ),
+    ("Channel01 不是 TCP", make_rtu, ["Channel01 須為 TCP", "'rtu'"]),
+]
+
+# FR-11 第二層
+CONFIG_ERRORS_SECOND = [
+    (
+        "Visible 欄位缺少",
+        lambda d: remove_column(d, "Visible"),
+        ["io_points.csv：表頭缺少欄位 Visible"],
     ),
     (
         "Visible 列舉",
@@ -279,13 +365,16 @@ CONFIG_ERRORS = [
     ),
     (
         "型態表 Data Model",
-        lambda d: edit_io(d, "Home Sensor 1", "Data Model", "Coil"),
+        lambda d: (
+            edit_io(d, "Home Sensor 1", "Data Model", "Coil"),
+            replace_text(d, RANGES, '"20~84, 120~184"', '"20~84, 120~184, 24593"'),
+        ),
         ["Home Sensor 1", "Data Model 應為「Discrete Input」，實際為「Coil」"],
     ),
     (
-        "型態表 Sensor Type",
-        lambda d: edit_io(d, "Alarm Code 1", "Sensor Type", "Boolean"),
-        ["Alarm Code 1", "Sensor Type 應為「U16」，實際為「Boolean」"],
+        "型態表 Data Type",
+        lambda d: edit_io(d, "Alarm Code 1", "Data Type", "I16"),
+        ["Alarm Code 1", "Data Type 應為「U16」，實際為「I16」"],
     ),
     (
         "型態表 Access",
@@ -294,51 +383,61 @@ CONFIG_ERRORS = [
     ),
     (
         "型態表 Address Length",
-        lambda d: edit_io(d, "Current Position 1", "Address Length", "1"),
-        ["Current Position 1", "Address Length 應為「2」，實際為「1」"],
+        lambda d: (
+            edit_io(d, "Speed 1", "Data Type", "I32"),
+            edit_io(d, "Speed 1", "Address Length", "2"),
+        ),
+        ["Speed 1", "Address Length 應為「1」，實際為「2」"],
     ),
     (
-        "型態表 Attributes 拿掉 ON",
-        lambda d: edit_io(d, "Positive Limit 1", "Attributes", ""),
-        ["Positive Limit 1", "Attributes 應為「ON」"],
+        "Position 的 word_order",
+        lambda d: edit_io(
+            d, "Current Position 1", "Attributes", "scale=10000;unit=mm;word_order=high_first"
+        ),
+        ["Current Position 1", "Attributes 不可設定 word_order=high_first"],
     ),
     (
-        "型態表 Attributes 應空白",
-        lambda d: edit_io(d, "Ready 1", "Attributes", "ON"),
-        ["Ready 1", "Attributes 應為空白"],
+        "Position 缺倍率",
+        lambda d: edit_io(d, "Current Position 2", "Attributes", "unit=mm"),
+        ["Current Position 2", "Attributes 缺少 scale"],
     ),
     (
-        "型態表 Attributes 倍率格式",
-        lambda d: edit_io(d, "Current Position 2", "Attributes", "10000"),
-        ["Current Position 2", "倍率,單位"],
+        "倍率不是整數",
+        lambda d: (
+            edit_io(d, "Current Position 3", "Attributes", "scale=0.5;unit=mm"),
+            edit_io(d, "Target Position 3", "Attributes", "scale=0.5;unit=mm"),
+        ),
+        ["Current Position 3", "倍率須為正整數"],
+    ),
+    (
+        "非感測點設 invert",
+        lambda d: edit_io(d, "Ready 1", "Attributes", "invert=true"),
+        ["Ready 1", "Attributes 不可設定 invert=true"],
+    ),
+    (
+        "Speed 設 scale",
+        lambda d: edit_io(d, "Speed 2", "Attributes", "scale=10"),
+        ["Speed 2", "Attributes 不可設定 scale=10"],
     ),
     (
         "倍率不一致",
-        lambda d: edit_io(d, "Target Position 1", "Attributes", "100,mm"),
+        lambda d: edit_io(d, "Target Position 1", "Attributes", "scale=100;unit=mm"),
         ["Current Position 1", "Target Position 1", "倍率或單位不一致"],
     ),
-    ("位址重疊", overlap, ["位址重疊", "Ready 1", "Cylinder1 Up"]),
     (
-        "軟體極限",
-        lambda d: replace_text(d, "axes.toml", "soft_limit_max = 100.0", "soft_limit_max = -100.0"),
-        ["軟體極限最小值 -100.0 不小於最大值 -100.0"],
-    ),
-    (
-        "步距",
-        lambda d: replace_text(d, "axes.toml", "step_short = ", "step_short = -", 1),
-        ["step_short", "須為正數"],
-    ),
-    (
-        "預設速度",
-        lambda d: replace_text(d, "axes.toml", "default_speed = 50", "default_speed = 101"),
-        ["default_speed = 101", "1 ~ 100"],
+        "位址重疊",
+        lambda d: add_io(d, coil_row("Cylinder1 Up", "20")),
+        ["位址重疊", "Ready 1", "Cylinder1 Up"],
     ),
 ]
 
 
 @pytest.mark.parametrize(
     ("make_error", "expected"),
-    [pytest.param(make, expected, id=name) for name, make, expected in CONFIG_ERRORS],
+    [
+        pytest.param(make, expected, id=name)
+        for name, make, expected in CONFIG_ERRORS_FIRST + CONFIG_ERRORS_SECOND
+    ],
 )
 def test_ac2_each_config_error_is_listed_and_exits_nonzero(
     qtbot, e2e_config_dir, no_running_instance, make_error, expected
@@ -353,14 +452,68 @@ def test_ac2_each_config_error_is_listed_and_exits_nonzero(
     ]
 
 
+@pytest.mark.parametrize(
+    ("make_errors", "expected"),
+    [
+        pytest.param(
+            (
+                lambda d: (d / "axes.toml").unlink(),
+                lambda d: edit_io(d, "Busy 2", "Data Model", "Coils"),
+            ),
+            ["缺少設定檔 axes.toml", "'Coils'"],
+            id="第一層：axes.toml 缺少與 Data Model 打錯",
+        ),
+        pytest.param(
+            (make_rtu, lambda d: edit_io(d, "Busy 2", "Data Model", "Coils")),
+            ["Channel01 須為 TCP", "'Coils'"],
+            id="第一層：rtu 與 Data Model 打錯",
+        ),
+        pytest.param(
+            (
+                lambda d: edit_io(d, "Speed 1", "Tag Name", None),
+                lambda d: edit_io(d, "Busy 4", "Visible", "Z"),
+            ),
+            ["缺少必要 Tag「Speed 1」", "Busy 4", "Visible「Z」"],
+            id="第二層：Speed 1 缺少與 Visible 值錯誤",
+        ),
+    ],
+)
+def test_ac2_two_errors_in_same_layer_are_both_listed(
+    qtbot, e2e_config_dir, no_running_instance, make_errors, expected
+):
+    for make in make_errors:
+        make(e2e_config_dir)
+    code, seen = run_main_with_config_errors(e2e_config_dir)
+    assert code != 0
+    assert all(text in seen[0] for text in expected), seen[0]
+
+
+def test_ac2_second_layer_is_listed_after_first_layer_is_fixed(
+    qtbot, e2e_config_dir, no_running_instance
+):
+    axes = e2e_config_dir / "axes.toml"
+    good = axes.read_bytes()
+    axes.unlink()
+    edit_io(e2e_config_dir, "Speed 1", "Tag Name", None)
+
+    code, seen = run_main_with_config_errors(e2e_config_dir)
+    assert code != 0
+    assert "缺少設定檔 axes.toml" in seen[0] and "Speed 1" not in seen[0]
+
+    axes.write_bytes(good)
+    code, seen = run_main_with_config_errors(e2e_config_dir)
+    assert code != 0
+    assert "缺少必要 Tag「Speed 1」" in seen[0] and "axes.toml" not in seen[0]
+
+
 def test_ac2_two_errors_are_both_listed_in_real_process(
     e2e_config_dir, no_running_instance, processes
 ):
-    edit_io(e2e_config_dir, "Positive Limit 1", "Attributes", "")
+    edit_io(e2e_config_dir, "Busy 2", "Data Model", "Coils")
     replace_text(e2e_config_dir, "axes.toml", "default_speed = 50", "default_speed = 101")
     code, seen = run_main_with_config_errors(e2e_config_dir)
     assert code != 0
-    assert "Positive Limit 1" in seen[0] and "default_speed = 101" in seen[0]
+    assert "'Coils'" in seen[0] and "default_speed = 101" in seen[0]
     assert "2 項錯誤" in seen[0]
 
     # 真實程序：錯誤視窗出現、主視窗沒開，關閉後結束碼非 0
@@ -485,8 +638,8 @@ def test_ac31_alarm_while_in_tray_notifies_and_turns_icon_fault(e2e):
 def test_ac32_dark_only_and_legacy_light_setting_ignored(
     e2e, e2e_config_dir, no_running_instance, restore_theme
 ):
-    """只有深色主題：畫面上沒有主題切換；device.toml 留著舊的 theme = "light" 也照常以深色啟動。"""
-    path = e2e_config_dir / "device.toml"
+    """只有深色主題：畫面上沒有主題切換；app.toml 寫了 [ui] theme = "light" 也照常以深色啟動。"""
+    path = e2e_config_dir / "app.toml"
     text = path.read_bytes().decode("utf-8")
     path.write_bytes((text.rstrip() + '\n\n[ui]\ntheme = "light"\n').encode("utf-8"))
     qapp = QApplication.instance()

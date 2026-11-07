@@ -1,15 +1,20 @@
 """背景通訊 worker（spec FR-10 ~ FR-14、FR-27、FR-49、FR-50）。
 
-`PlcWorker` 住在自己的 QThread：`ModbusLink` 的讀寫、`MotionEngine` 的建立與每一次呼叫
+`PlcWorker` 住在自己的 QThread：`TagsLink` 的每一次呼叫、`MotionEngine` 的建立與每一次呼叫
 都在這條執行緒內。UI 只呼叫命令方法（任何執行緒皆可，內部以 queued signal 轉派）並接收
-signal。一切在 worker 的事件迴圈裡依序執行，所以引擎命令必定落在某次 tick 之後、下一次
-read_all 之前；JOG 放開等命令不必等輪詢計時器，排到的下一個事件就執行。
+signal。一切在 worker 的事件迴圈裡依序執行。
 
-每輪輪詢量測 `read_all` 的耗時（依序送完所有讀取請求）與相鄰兩輪開始的間隔，以 `poll_timed` 發出，
-供狀態列判斷通訊品質與調整輪詢週期；連線後第一輪沒有間隔值。
+通訊在 modbus_tags 的通道執行緒進行（spec modbus-tags-migration「執行流程」）：
+- 短週期計時器呼叫 `TagsLink.poll()`；有新的一輪快照才 `engine.tick`，同一份不重複（FR-17）。
+  通道不送 Qt signal 給這裡，舊 Bus 停掉後不會留下待處理的事件。
+- 寫入只排入通道佇列；有寫入時通道立刻開始新的一輪，JOG 放開不等輪詢週期。
+- 連線以第一輪快照為準：那時才 `engine.on_connected()`、發 `connection_changed(True)`（FR-15）。
+- `poll_timed` 每份新快照發一次：讀取耗時、與上一份快照的時間差、每輪請求數；
+  連線後第一輪沒有間隔值（FR-18）。
 
-通訊中斷：`PlcCommError`（含 Modbus 例外回應）與任何未預期例外都視為中斷——關閉連線、
-`engine.on_disconnected()`、發 `connection_changed(False)`；不自動重連，等 `connect_plc()`。
+通訊中斷：`PlcCommError`（含寫入被拒）與任何未預期例外都視為中斷——連線仍在且 JOG 按住中時
+先等該 JOG 點寫 0（FR-23），再關閉連線、`engine.on_disconnected()`、發 `connection_changed(False)`；
+不自動重連，等 `connect_plc()`。關閉連線前先等已排入的寫入有結果或逾時（FR-19）。
 """
 
 import logging
@@ -19,6 +24,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 
+from lib.modbus_tags import ReadOnlyTag, ValueOutOfRange
 from plc_motion.codec import decimals_for
 from plc_motion.engine import (
     CommandRejected,
@@ -33,12 +39,31 @@ from plc_motion.engine import (
     ResidualDetected,
     ResidualInfo,
 )
-from plc_motion.plc.modbus_link import ModbusLink
 from plc_motion.plc.port import PlcCommError
 from plc_motion.plc.snapshot import Snapshot
+from plc_motion.plc.tags_link import BusFactory, TagsLink, bus_stop_timeout_s, drain_timeout_s
 from plc_motion.settings.loader import AppConfig
 
 log = logging.getLogger("plc_motion.worker")
+
+# 檢查新快照、寫入失敗與連線狀態的計時器週期。只影響引擎拿到快照的延遲（JOG 放開等寫入
+# 不經過它）；一次檢查只讀通道的最新結果，不送任何請求。
+POLL_CHECK_MS = 20
+
+_STOP_SLACK_S = 0.5  # 事件迴圈處理 stop 與執行緒收尾的餘裕
+
+
+def stop_timeout_ms(config: AppConfig) -> int:
+    """`stop()` 到執行緒結束的最壞等待（ms）：給 `MotionApp.shutdown` 的 `thread.wait`。
+
+    最壞路徑是 stop 排在斷線處理之後：寫入被拒、連線仍在且 JOG 按住時先等 JOG 寫 0
+    （`_release_held_jog`，上限 `drain_timeout_s`），`close()` 再等已排入的寫入（同上限），
+    最後停止通道（上限 `bus_stop_timeout_s`）。全部取自 tags_link 的同一份公式。
+    """
+    device = config.channel.device
+    jog_release_s = drain_timeout_s(device)  # 與 _release_held_jog 的 write_wait 上限相同
+    close_s = drain_timeout_s(device) + bus_stop_timeout_s(device)
+    return int((jog_release_s + close_s + _STOP_SLACK_S) * 1000)
 
 
 @dataclass(frozen=True)
@@ -52,35 +77,44 @@ class EngineStatus:
 
 @dataclass(frozen=True)
 class PollTiming:
-    read_ms: float  # 本輪讀完全部位址花的時間
-    cycle_ms: float | None  # 與上一輪開始的間隔；連線後第一輪為 None
-    requests: int  # 本輪送出的讀取請求數
+    read_ms: float  # 最近一輪讀完全部位址花的時間
+    cycle_ms: float | None  # 與上一份快照的時間差；連線後第一輪為 None
+    requests: int  # 每輪送出的讀取請求數
 
 
 class PlcWorker(QObject):
     # 跨執行緒 signal；接收端在 UI 執行緒時為 queued。
-    # snapshot_ready 每次輪詢與每個命令之後發出；未連線時 Snapshot 為 None。
+    # snapshot_ready 每份新快照與每個命令之後發出；未連線時 Snapshot 為 None。
     snapshot_ready = Signal(object, object)  # (Snapshot | None, EngineStatus)
     engine_event = Signal(object)  # EngineEvent
     connection_changed = Signal(bool)
-    poll_timed = Signal(object)  # PollTiming，每次輪詢成功後發出
+    poll_timed = Signal(object)  # PollTiming，每份新快照發出
 
     _call = Signal(object)  # 內部：把命令轉派到 worker 執行緒
 
-    def __init__(self, config: AppConfig, host: str, port: int):
+    def __init__(
+        self,
+        config: AppConfig,
+        host: str,
+        port: int,
+        *,
+        bus_factory: BusFactory | None = None,  # 測試用：替身 Bus
+    ):
         super().__init__()
         self._config = config
         self._host = host
         self._port = port
-        self._link: ModbusLink | None = None
+        self._bus_factory = bus_factory
+        self.stop_timeout_ms = stop_timeout_ms(config)  # 建立後不變，任何執行緒可讀
+        self._link: TagsLink | None = None
         self._engine: MotionEngine | None = None
         self._timer: QTimer | None = None
-        self._connected = False
+        self._linking = False  # 已 connect()、尚未失敗或關閉（連線中或已連線）
+        self._connected = False  # 第一輪快照已交出
         self._operating = False
         self._stopped = False
         self._snapshot: Snapshot | None = None
         self._prev: Snapshot | None = None  # 比較 Alarm Code 與 Emergency Stop 變化用
-        self._last_poll_start: float | None = None
         self._call.connect(self._run, Qt.ConnectionType.QueuedConnection)
 
     # ---- 命令方法（UI 入口） ----
@@ -126,18 +160,12 @@ class PlcWorker(QObject):
 
     @Slot()
     def _on_started(self) -> None:
-        self._link = ModbusLink(
-            self._config.points,
-            self._host,
-            self._port,
-            self._config.device.connect_timeout_ms,
-            self._config.read_ranges,
-        )
+        self._link = TagsLink(self._config, self._host, self._port, bus_factory=self._bus_factory)
         self._engine = MotionEngine(self._config, self._link, time.monotonic)
         self._engine.add_listener(self._on_engine_event)
         self._timer = QTimer(self)
         self._timer.setTimerType(Qt.TimerType.PreciseTimer)
-        self._timer.setInterval(self._config.device.poll_interval_ms)
+        self._timer.setInterval(POLL_CHECK_MS)
         self._timer.timeout.connect(self._on_timer)
         self._timer.start()
 
@@ -151,84 +179,114 @@ class PlcWorker(QObject):
 
     @Slot()
     def _on_timer(self) -> None:
-        if not self._stopped:
+        if not self._stopped and self._linking:
             self._guard(self._poll)
 
     def _guard(self, fn: Callable[[], object]) -> None:
         try:
             fn()
         except PlcCommError as e:
-            log.error("通訊錯誤：%s", e)
-            self._disconnect(f"通訊錯誤：{e}")
+            if self._connected:
+                log.error("通訊錯誤：%s", e)
+                self._disconnect(f"通訊錯誤：{e}")
+            else:
+                log.warning("連線失敗：%s", e)
+                self._disconnect(f"連線失敗：{e}")
         except Exception as e:
             log.exception("背景通訊發生未預期的例外，視同通訊中斷")
             self._disconnect(f"未預期的例外：{e!r}")
 
     def _poll(self) -> None:
-        if not self._connected:
+        """計時器呼叫：有新的一輪快照才推進引擎；寫入失敗或斷線由 `poll()` raise。"""
+        snapshot = self._link.poll()
+        if snapshot is None:
             return
-        start = time.perf_counter()
-        snapshot = self._link.read_all()
-        read_ms = (time.perf_counter() - start) * 1000
-        last, self._last_poll_start = self._last_poll_start, start
-        cycle_ms = (start - last) * 1000 if last is not None else None
+        if not self._connected:  # 第一輪完成才算連上（FR-15）
+            log.info("已連線到 PLC %s:%s", self._host, self._port)
+            self._connected = True
+            self._prev = None
+            self._engine.on_connected()
+            self.connection_changed.emit(True)
         self._snapshot = snapshot
         self._log_changes(snapshot)
         self._engine.tick(snapshot)
         self._emit_status()
-        self.poll_timed.emit(PollTiming(read_ms, cycle_ms, self._link.request_count))
+        read_ms = self._link.read_ms
+        if read_ms is not None:
+            self.poll_timed.emit(PollTiming(read_ms, self._link.cycle_ms, self._link.request_count))
 
     def _do_connect(self) -> None:
+        """建立新通道，不等結果：第一輪快照或連線失敗由計時器的 `_poll` 處理。"""
         if self._connected:
             self._disconnect("重新連線")
+        elif self._linking:
+            self._linking = False
+            log.info("重新連線：結束連線中的通道")
+            self._close_link()
         try:
             self._link.connect()
-        except Exception as e:
-            if isinstance(e, PlcCommError):
-                log.warning("連線失敗：%s", e)
-            else:
-                log.exception("連線時發生未預期的例外")
-            try:
-                self._link.close()
-            except Exception:
-                log.exception("關閉連線時發生例外")
+        except Exception:
+            log.exception("連線時發生未預期的例外")
+            self._close_link()
             self.connection_changed.emit(False)
             return
-        log.info("已連線到 PLC %s:%s", self._host, self._port)
-        self._connected = True
-        self._prev = None
-        self._last_poll_start = None
-        self._engine.on_connected()
-        self.connection_changed.emit(True)
-        self._poll()  # 不等計時器：連線後第一次輪詢立即完成
+        self._linking = True
+        log.info("連線到 PLC %s:%s", self._host, self._port)
 
     def _disconnect(self, reason: str) -> None:
-        if not self._connected:
+        """結束連線（連線中或已連線）並發 `connection_changed(False)`；已連線時另通知引擎。"""
+        if not self._linking:
             return
+        was_connected = self._connected
+        self._linking = False
         self._connected = False
         self._snapshot = None
         self._prev = None
+        if was_connected:
+            log.warning("與 PLC 斷線：%s", reason)
+            self._release_held_jog()
+        self._close_link()
+        if was_connected:
+            try:
+                self._engine.on_disconnected()
+            except Exception:
+                log.exception("處理斷線時發生未預期的例外")
+        self.connection_changed.emit(False)
+        self._emit_status()
+
+    def _release_held_jog(self) -> None:
+        """連線仍在（例如寫入被 PLC 拒絕）且 JOG 按住中：斷線前先等該點寫 0（FR-23）。
+
+        佇列裡的 JOG = 1 可能已經送出；直接斷線的話軸會一直動，放開按鈕也寫不到。
+        寫 0 成功與否都照樣斷線並提示請按急停（PLC 接受寫入不代表軸已停止）。
+        """
+        tag = self._engine.jog_held_tag
+        if tag is None or not self._link.connected:
+            return
+        try:
+            self._link.write_wait(tag, False, self._link.drain_timeout_s)
+        except Exception as e:
+            log.error("斷線前對 %s 寫 0 失敗：%s", tag, e)
+        else:
+            log.warning("斷線前已對 %s 寫 0", tag)
+
+    def _close_link(self) -> None:
+        """等已排入的寫入有結果或逾時，再停止通道（FR-19）。"""
         try:
             self._link.close()
         except Exception:
             log.exception("關閉連線時發生例外")
-        log.warning("與 PLC 斷線：%s", reason)
-        try:
-            self._engine.on_disconnected()
-        except Exception:
-            log.exception("處理斷線時發生未預期的例外")
-        self.connection_changed.emit(False)
-        self._emit_status()
 
     def _do_stop(self) -> None:
         self._stopped = True
         if self._timer is not None:
             self._timer.stop()
         if self._connected:
-            self._connected = False
             log.info("程式結束，關閉 PLC 連線")
+        self._linking = False
+        self._connected = False
         if self._link is not None:
-            self._link.close()
+            self._close_link()  # 畫面在結束前放開的 JOG（寫 0）先送出，才停止通道
         QThread.currentThread().quit()
 
     def _do_servo_all(self, on: bool) -> None:
@@ -243,9 +301,15 @@ class PlcWorker(QObject):
         self._engine.jog_release(axis, direction)
         log.info("JOG 放開：第 %s 軸 %s", axis, _dir_text(direction))
 
-    def _do_write_point(self, tag: str, value: int | bool) -> None:
-        if not self._engine.write_point(tag, value):
-            log.info("IO 寫入：%s = %s", tag, int(value))
+    def _do_write_point(self, tag: str, value: int | float | bool | str) -> None:
+        try:
+            rejected = self._engine.write_point(tag, value)
+        except (ValueOutOfRange, TypeError, ReadOnlyTag) as e:
+            # 範圍或型別錯誤不是通訊失敗：不寫入、維持連線
+            log.error("IO 寫入失敗：%s = %s：%s", tag, _value_text(value), e)
+            return
+        if not rejected:
+            log.info("IO 寫入：%s = %s", tag, _value_text(value))
 
     def _do_clear_residual(self) -> None:
         if not self._connected:
@@ -338,15 +402,26 @@ def _dir_text(direction: int) -> str:
     return "+" if direction > 0 else "-"
 
 
-def start_worker(config: AppConfig, host: str, port: int) -> tuple[QThread, PlcWorker]:
+def _value_text(value: int | float | bool | str) -> str:
+    """IO 寫入日誌的值：Bool 記 1／0，String 加引號（看得出空字串與前後空白）。"""
+    if isinstance(value, bool):
+        return str(int(value))
+    if isinstance(value, str):
+        return repr(value)
+    return str(value)
+
+
+def start_worker(
+    config: AppConfig, host: str, port: int, *, bus_factory: BusFactory | None = None
+) -> tuple[QThread, PlcWorker]:
     """建立並啟動 worker 執行緒；host／port 為本次連線用（命令列覆寫），不寫回 device.toml。
 
     自動連線（FR-10）排在呼叫端執行緒的事件迴圈：呼叫端在回到事件迴圈之前接好的 signal
-    都收得到第一次的 `connection_changed`。
+    都收得到第一次的 `connection_changed`。`bus_factory` 只給測試注入替身 Bus。
     """
     thread = QThread()
     thread.setObjectName("plc-worker")
-    worker = PlcWorker(config, host, port)
+    worker = PlcWorker(config, host, port, bus_factory=bus_factory)
     worker.moveToThread(thread)
     thread.started.connect(worker._on_started)
     thread.start()

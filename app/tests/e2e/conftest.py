@@ -10,6 +10,7 @@
 （plan 允許），PLC 端是同一個保留狀態的 SimServer。
 """
 
+import gc
 import shutil
 import threading
 import time
@@ -19,7 +20,7 @@ from datetime import date
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import QObject, QPoint, Qt, QTimer, Slot
+from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Slot
 from PySide6.QtWidgets import QApplication, QTableWidget, QWidget
 
 from plc_motion.app import MotionApp
@@ -387,3 +388,9 @@ def e2e(qtbot, config, sim, logs_dir):
     harness = Harness(qtbot, config, sim, logs_dir)
     yield harness
     harness.close_all()
+    # 在 GUI 執行緒刪掉視窗並回收循環參照（例如 answer_modal 的輪詢 closure 持有的視窗）：
+    # 留給之後的自動 GC 時，可能在 plc-sim-server 執行緒回收 Qt 物件而 access violation。
+    # 先送完 worker 已排入的 queued signal（取樣會讀畫面），再刪視窗。
+    QApplication.sendPostedEvents(None, QEvent.Type.MetaCall)
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    gc.collect()

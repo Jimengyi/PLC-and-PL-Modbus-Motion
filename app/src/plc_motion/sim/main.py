@@ -2,7 +2,7 @@
 
     plc-sim [--host 127.0.0.1] [--port 5020] [--config DIR]
 
-載入設定資料夾的 io_points.csv 與 read_ranges.toml，啟動模擬 PLC 的 Modbus TCP server 與操作視窗。
+載入設定資料夾（點位與讀取範圍在 modbus/Channel01），啟動模擬 PLC 的 Modbus TCP server 與操作視窗。
 """
 
 import argparse

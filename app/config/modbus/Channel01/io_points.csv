@@ -1,0 +1,128 @@
+﻿Tag Name,Display Name,Start Address,Address Length,Unit ID,Data Model,Data Type,Access,Visible,Description,Attributes,Check Status
+Find Home Finish 1,X 軸原點復歸完成,22,1,0,Coil,Bool,Read Only,O,_M22,,Unchecked
+Ready 1,X 軸就緒,20,1,0,Coil,Bool,Read Only,O,_M20,,Unchecked
+Busy 1,X 軸忙碌,21,1,0,Coil,Bool,Read Only,O,_M21,,Unchecked
+PLC Action Code 1,X 軸PLC 動作碼,21,1,0,Holding Register,U16,Read Only,O,_D21,,Unchecked
+Reply 1,X 軸回覆,24,1,0,Coil,Bool,Read Only,O,_M24,,Unchecked
+Alarm Code 1,X 軸異常碼,20,1,0,Holding Register,U16,Read Only,O,_D20,,Unchecked
+Current Position 1,X 軸目前位置,22,2,0,Holding Register,I32,Read Only,O,_DD22,scale=10000;unit=mm,Unchecked
+Positive Limit 1,X 軸正極限,24592,1,0,Discrete Input,Bool,Read Only,O,_X1.0,invert=true,Unchecked
+Home Sensor 1,X 軸原點,24593,1,0,Discrete Input,Bool,Read Only,O,_X1.1,,Unchecked
+Negative Limit 1,X 軸負極限,24594,1,0,Discrete Input,Bool,Read Only,O,_X1.2,invert=true,Unchecked
+Servo Motor 1,X 軸伺服啟動,122,1,0,Coil,Bool,Read Write,O,_M122,,Unchecked
+Speed 1,X 軸速度,123,1,0,Holding Register,U16,Read Write,O,_D123,,Unchecked
+Target Position 1,X 軸目標位置,121,2,0,Holding Register,I32,Read Write,O,_DD121,scale=10000;unit=mm,Unchecked
+PC Action Code 1,X 軸PC 動作碼,120,1,0,Holding Register,U16,Read Write,O,_D120,,Unchecked
+Request 1,X 軸請求,120,1,0,Coil,Bool,Read Write,X,_M120,,Unchecked
+Reset Alarm 1,X 軸異常重置,121,1,0,Coil,Bool,Read Write,O,_M121,,Unchecked
+JOG Plus 1,X 軸JOG 正轉,123,1,0,Coil,Bool,Read Write,X,_M123,,Unchecked
+JOG Minus 1,X 軸JOG 反轉,124,1,0,Coil,Bool,Read Write,X,_M124,,Unchecked
+Find Home Finish 2,Y 軸原點復歸完成,32,1,0,Coil,Bool,Read Only,O,_M32,,Unchecked
+Ready 2,Y 軸就緒,30,1,0,Coil,Bool,Read Only,O,_M30,,Unchecked
+Busy 2,Y 軸忙碌,31,1,0,Coil,Bool,Read Only,O,_M31,,Unchecked
+PLC Action Code 2,Y 軸PLC 動作碼,31,1,0,Holding Register,U16,Read Only,O,_D31,,Unchecked
+Reply 2,Y 軸回覆,34,1,0,Coil,Bool,Read Only,O,_M34,,Unchecked
+Alarm Code 2,Y 軸異常碼,30,1,0,Holding Register,U16,Read Only,O,_D30,,Unchecked
+Current Position 2,Y 軸目前位置,32,2,0,Holding Register,I32,Read Only,O,_DD32,scale=10000;unit=mm,Unchecked
+Positive Limit 2,Y 軸正極限,24595,1,0,Discrete Input,Bool,Read Only,O,_X1.3,invert=true,Unchecked
+Home Sensor 2,Y 軸原點,24596,1,0,Discrete Input,Bool,Read Only,O,_X1.4,,Unchecked
+Negative Limit 2,Y 軸負極限,24597,1,0,Discrete Input,Bool,Read Only,O,_X1.5,invert=true,Unchecked
+Servo Motor 2,Y 軸伺服啟動,132,1,0,Coil,Bool,Read Write,O,_M132,,Unchecked
+Speed 2,Y 軸速度,133,1,0,Holding Register,U16,Read Write,O,_D133,,Unchecked
+Target Position 2,Y 軸目標位置,131,2,0,Holding Register,I32,Read Write,O,_DD131,scale=10000;unit=mm,Unchecked
+PC Action Code 2,Y 軸PC 動作碼,130,1,0,Holding Register,U16,Read Write,O,_D130,,Unchecked
+Request 2,Y 軸請求,130,1,0,Coil,Bool,Read Write,X,_M130,,Unchecked
+Reset Alarm 2,Y 軸異常重置,131,1,0,Coil,Bool,Read Write,O,_M131,,Unchecked
+JOG Plus 2,Y 軸JOG 正轉,133,1,0,Coil,Bool,Read Write,X,_M133,,Unchecked
+JOG Minus 2,Y 軸JOG 反轉,134,1,0,Coil,Bool,Read Write,X,_M134,,Unchecked
+Find Home Finish 3,Z 軸原點復歸完成,42,1,0,Coil,Bool,Read Only,O,_M42,,Unchecked
+Ready 3,Z 軸就緒,40,1,0,Coil,Bool,Read Only,O,_M40,,Unchecked
+Busy 3,Z 軸忙碌,41,1,0,Coil,Bool,Read Only,O,_M41,,Unchecked
+PLC Action Code 3,Z 軸PLC 動作碼,41,1,0,Holding Register,U16,Read Only,O,_D41,,Unchecked
+Reply 3,Z 軸回覆,44,1,0,Coil,Bool,Read Only,O,_M44,,Unchecked
+Alarm Code 3,Z 軸異常碼,40,1,0,Holding Register,U16,Read Only,O,_D40,,Unchecked
+Current Position 3,Z 軸目前位置,42,2,0,Holding Register,I32,Read Only,O,_DD42,scale=10000;unit=mm,Unchecked
+Positive Limit 3,Z 軸正極限,24598,1,0,Discrete Input,Bool,Read Only,O,_X1.6,invert=true,Unchecked
+Home Sensor 3,Z 軸原點,24599,1,0,Discrete Input,Bool,Read Only,O,_X1.7,,Unchecked
+Negative Limit 3,Z 軸負極限,24600,1,0,Discrete Input,Bool,Read Only,O,_X1.8,invert=true,Unchecked
+Servo Motor 3,Z 軸伺服啟動,142,1,0,Coil,Bool,Read Write,O,_M142,,Unchecked
+Speed 3,Z 軸速度,143,1,0,Holding Register,U16,Read Write,O,_D143,,Unchecked
+Target Position 3,Z 軸目標位置,141,2,0,Holding Register,I32,Read Write,O,_DD141,scale=10000;unit=mm,Unchecked
+PC Action Code 3,Z 軸PC 動作碼,140,1,0,Holding Register,U16,Read Write,O,_D140,,Unchecked
+Request 3,Z 軸請求,140,1,0,Coil,Bool,Read Write,X,_M140,,Unchecked
+Reset Alarm 3,Z 軸異常重置,141,1,0,Coil,Bool,Read Write,O,_M141,,Unchecked
+JOG Plus 3,Z 軸JOG 正轉,143,1,0,Coil,Bool,Read Write,X,_M143,,Unchecked
+JOG Minus 3,Z 軸JOG 反轉,144,1,0,Coil,Bool,Read Write,X,_M144,,Unchecked
+Find Home Finish 4,RX 軸原點復歸完成,52,1,0,Coil,Bool,Read Only,O,_M52,,Unchecked
+Ready 4,RX 軸就緒,50,1,0,Coil,Bool,Read Only,O,_M50,,Unchecked
+Busy 4,RX 軸忙碌,51,1,0,Coil,Bool,Read Only,O,_M51,,Unchecked
+PLC Action Code 4,RX 軸PLC 動作碼,51,1,0,Holding Register,U16,Read Only,O,_D51,,Unchecked
+Reply 4,RX 軸回覆,54,1,0,Coil,Bool,Read Only,O,_M54,,Unchecked
+Alarm Code 4,RX 軸異常碼,50,1,0,Holding Register,U16,Read Only,O,_D50,,Unchecked
+Current Position 4,RX 軸目前位置,52,2,0,Holding Register,I32,Read Only,O,_DD52,scale=100;unit=deg,Unchecked
+Positive Limit 4,RX 軸正極限,24601,1,0,Discrete Input,Bool,Read Only,O,_X1.9,invert=true,Unchecked
+Home Sensor 4,RX 軸原點,24602,1,0,Discrete Input,Bool,Read Only,O,_X1.10,,Unchecked
+Negative Limit 4,RX 軸負極限,24603,1,0,Discrete Input,Bool,Read Only,O,_X1.11,invert=true,Unchecked
+Servo Motor 4,RX 軸伺服啟動,152,1,0,Coil,Bool,Read Write,O,_M152,,Unchecked
+Speed 4,RX 軸速度,153,1,0,Holding Register,U16,Read Write,O,_D153,,Unchecked
+Target Position 4,RX 軸目標位置,151,2,0,Holding Register,I32,Read Write,O,_DD151,scale=100;unit=deg,Unchecked
+PC Action Code 4,RX 軸PC 動作碼,150,1,0,Holding Register,U16,Read Write,O,_D150,,Unchecked
+Request 4,RX 軸請求,150,1,0,Coil,Bool,Read Write,X,_M150,,Unchecked
+Reset Alarm 4,RX 軸異常重置,151,1,0,Coil,Bool,Read Write,O,_M151,,Unchecked
+JOG Plus 4,RX 軸JOG 正轉,153,1,0,Coil,Bool,Read Write,X,_M153,,Unchecked
+JOG Minus 4,RX 軸JOG 反轉,154,1,0,Coil,Bool,Read Write,X,_M154,,Unchecked
+Find Home Finish 5,RY 軸原點復歸完成,62,1,0,Coil,Bool,Read Only,O,_M62,,Unchecked
+Ready 5,RY 軸就緒,60,1,0,Coil,Bool,Read Only,O,_M60,,Unchecked
+Busy 5,RY 軸忙碌,61,1,0,Coil,Bool,Read Only,O,_M61,,Unchecked
+PLC Action Code 5,RY 軸PLC 動作碼,61,1,0,Holding Register,U16,Read Only,O,_D61,,Unchecked
+Reply 5,RY 軸回覆,64,1,0,Coil,Bool,Read Only,O,_M64,,Unchecked
+Alarm Code 5,RY 軸異常碼,60,1,0,Holding Register,U16,Read Only,O,_D60,,Unchecked
+Current Position 5,RY 軸目前位置,62,2,0,Holding Register,I32,Read Only,O,_DD62,scale=100;unit=deg,Unchecked
+Positive Limit 5,RY 軸正極限,24604,1,0,Discrete Input,Bool,Read Only,O,_X1.12,invert=true,Unchecked
+Home Sensor 5,RY 軸原點,24605,1,0,Discrete Input,Bool,Read Only,O,_X1.13,,Unchecked
+Negative Limit 5,RY 軸負極限,24606,1,0,Discrete Input,Bool,Read Only,O,_X1.14,invert=true,Unchecked
+Servo Motor 5,RY 軸伺服啟動,162,1,0,Coil,Bool,Read Write,O,_M162,,Unchecked
+Speed 5,RY 軸速度,163,1,0,Holding Register,U16,Read Write,O,_D163,,Unchecked
+Target Position 5,RY 軸目標位置,161,2,0,Holding Register,I32,Read Write,O,_DD161,scale=100;unit=deg,Unchecked
+PC Action Code 5,RY 軸PC 動作碼,160,1,0,Holding Register,U16,Read Write,O,_D160,,Unchecked
+Request 5,RY 軸請求,160,1,0,Coil,Bool,Read Write,X,_M160,,Unchecked
+Reset Alarm 5,RY 軸異常重置,161,1,0,Coil,Bool,Read Write,O,_M161,,Unchecked
+JOG Plus 5,RY 軸JOG 正轉,163,1,0,Coil,Bool,Read Write,X,_M163,,Unchecked
+JOG Minus 5,RY 軸JOG 反轉,164,1,0,Coil,Bool,Read Write,X,_M164,,Unchecked
+Find Home Finish 6,RZ 軸原點復歸完成,72,1,0,Coil,Bool,Read Only,O,_M72,,Unchecked
+Ready 6,RZ 軸就緒,70,1,0,Coil,Bool,Read Only,O,_M70,,Unchecked
+Busy 6,RZ 軸忙碌,71,1,0,Coil,Bool,Read Only,O,_M71,,Unchecked
+PLC Action Code 6,RZ 軸PLC 動作碼,71,1,0,Holding Register,U16,Read Only,O,_D71,,Unchecked
+Reply 6,RZ 軸回覆,74,1,0,Coil,Bool,Read Only,O,_M74,,Unchecked
+Alarm Code 6,RZ 軸異常碼,70,1,0,Holding Register,U16,Read Only,O,_D70,,Unchecked
+Current Position 6,RZ 軸目前位置,72,2,0,Holding Register,I32,Read Only,O,_DD72,scale=100;unit=deg,Unchecked
+Positive Limit 6,RZ 軸正極限,24607,1,0,Discrete Input,Bool,Read Only,O,_X1.15,invert=true,Unchecked
+Home Sensor 6,RZ 軸原點,24608,1,0,Discrete Input,Bool,Read Only,O,_X2.0,,Unchecked
+Negative Limit 6,RZ 軸負極限,24609,1,0,Discrete Input,Bool,Read Only,O,_X2.1,invert=true,Unchecked
+Servo Motor 6,RZ 軸伺服啟動,172,1,0,Coil,Bool,Read Write,O,_M172,,Unchecked
+Speed 6,RZ 軸速度,173,1,0,Holding Register,U16,Read Write,O,_D173,,Unchecked
+Target Position 6,RZ 軸目標位置,171,2,0,Holding Register,I32,Read Write,O,_DD171,scale=100;unit=deg,Unchecked
+PC Action Code 6,RZ 軸PC 動作碼,170,1,0,Holding Register,U16,Read Write,O,_D170,,Unchecked
+Request 6,RZ 軸請求,170,1,0,Coil,Bool,Read Write,X,_M170,,Unchecked
+Reset Alarm 6,RZ 軸異常重置,171,1,0,Coil,Bool,Read Write,O,_M171,,Unchecked
+JOG Plus 6,RZ 軸JOG 正轉,173,1,0,Coil,Bool,Read Write,X,_M173,,Unchecked
+JOG Minus 6,RZ 軸JOG 反轉,174,1,0,Coil,Bool,Read Write,X,_M174,,Unchecked
+Find Home Finish 7,升降 軸原點復歸完成,82,1,0,Coil,Bool,Read Only,O,_M82,,Unchecked
+Ready 7,升降 軸就緒,80,1,0,Coil,Bool,Read Only,O,_M80,,Unchecked
+Busy 7,升降 軸忙碌,81,1,0,Coil,Bool,Read Only,O,_M81,,Unchecked
+PLC Action Code 7,升降 軸PLC 動作碼,81,1,0,Holding Register,U16,Read Only,O,_D81,,Unchecked
+Reply 7,升降 軸回覆,84,1,0,Coil,Bool,Read Only,O,_M84,,Unchecked
+Alarm Code 7,升降 軸異常碼,80,1,0,Holding Register,U16,Read Only,O,_D80,,Unchecked
+Current Position 7,升降 軸目前位置,82,2,0,Holding Register,I32,Read Only,O,_DD82,scale=100;unit=mm,Unchecked
+Positive Limit 7,升降 軸正極限,24610,1,0,Discrete Input,Bool,Read Only,O,_X2.2,invert=true,Unchecked
+Home Sensor 7,升降 軸原點,24611,1,0,Discrete Input,Bool,Read Only,O,_X2.3,,Unchecked
+Negative Limit 7,升降 軸負極限,24612,1,0,Discrete Input,Bool,Read Only,O,_X2.4,invert=true,Unchecked
+Servo Motor 7,升降 軸伺服啟動,182,1,0,Coil,Bool,Read Write,O,_M182,,Unchecked
+Speed 7,升降 軸速度,183,1,0,Holding Register,U16,Read Write,O,_D183,,Unchecked
+Target Position 7,升降 軸目標位置,181,2,0,Holding Register,I32,Read Write,O,_DD181,scale=100;unit=mm,Unchecked
+PC Action Code 7,升降 軸PC 動作碼,180,1,0,Holding Register,U16,Read Write,O,_D180,,Unchecked
+Request 7,升降 軸請求,180,1,0,Coil,Bool,Read Write,X,_M180,,Unchecked
+Reset Alarm 7,升降 軸異常重置,181,1,0,Coil,Bool,Read Write,O,_M181,,Unchecked
+JOG Plus 7,升降 軸JOG 正轉,183,1,0,Coil,Bool,Read Write,X,_M183,,Unchecked
+JOG Minus 7,升降 軸JOG 反轉,184,1,0,Coil,Bool,Read Write,X,_M184,,Unchecked
+Emergency Stop,緊急停止,24576,1,0,Discrete Input,Bool,Read Only,O,七軸共用 _X0.0,invert=true,Unchecked

@@ -1,8 +1,9 @@
 """交握引擎 MotionEngine：前置檢查、全域動作鎖、多軸操作的推進與結果彙整。
 
 純邏輯：不 import Qt，時間由注入的 clock 提供，I/O 只經由 PlcPort。
-呼叫端（PlcWorker）每輪 `port.read_all()` 後呼叫一次 `tick(snapshot)`；命令方法在兩次
-tick 之間呼叫，命令內的寫入要在下一次 read_all 之前完成，tick 收到的快照才反映這些寫入。
+呼叫端（PlcWorker）每拿到一份新快照呼叫一次 `tick(snapshot)`，同一份不重複；命令方法在
+兩次 tick 之間呼叫。寫入只排入通訊佇列、不等結果，所以之後的快照可能仍早於這些寫入
+（通道正好在讀取時）：交握等待的點都要等 PLC 反應才會變，舊值只會讓引擎多等一輪。
 PlcPort 寫入失敗的 PlcCommError 不在此攔截，由呼叫端視為通訊中斷並呼叫 `on_disconnected()`。
 
 名詞：
@@ -22,6 +23,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import MappingProxyType
 
+from lib.modbus_tags import Access
 from plc_motion.codec import decimals_for, to_raw
 from plc_motion.engine.events import (
     AxisResult,
@@ -39,7 +41,6 @@ from plc_motion.engine.events import (
 from plc_motion.engine.handshake import CODE_HOME, CODE_MOVE, AxisHandshake
 from plc_motion.plc.port import PlcPort
 from plc_motion.plc.snapshot import AxisState, Snapshot
-from plc_motion.settings.io_points import Access
 from plc_motion.settings.loader import AppConfig
 
 LIFT_AXIS = 7  # 原點復歸時先做的軸（FR-23）
@@ -323,6 +324,17 @@ class MotionEngine:
     def locked(self) -> bool:
         return bool(self.lock_reasons)
 
+    @property
+    def jog_held_tag(self) -> str | None:
+        """按住中的 JOG 點名稱（例如 "JOG Plus 3"）；沒有按住時 None。
+
+        PlcWorker 在寫入被拒、斷線之前用它對該點寫 0（spec modbus-tags-migration FR-23）。
+        """
+        if self._jog_held is None:
+            return None
+        axis, direction = self._jog_held
+        return f"{JOG_TAGS[direction]} {axis}"
+
     # ---- 命令 ----
 
     # 以下命令方法都回傳拒絕原因清單：空清單表示已接受
@@ -441,7 +453,7 @@ class MotionEngine:
         if self._connected:
             self._port.write(f"{JOG_TAGS[direction]} {axis}", False)
 
-    def write_point(self, tag: str, value: int | bool) -> list[str]:
+    def write_point(self, tag: str, value: int | float | bool | str) -> list[str]:
         """IO Monitor 的單點寫入；值的範圍檢查由畫面負責。"""
         command = "IO 寫入"
         reasons = self.lock_reasons

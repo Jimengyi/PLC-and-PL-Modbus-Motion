@@ -3,14 +3,15 @@
 # - 每個 [[unit]] 一個 Unit ID
 # - 範圍寫「起~迄」（含兩端），多段用逗號分隔；只有一個位址時可寫單一數字
 # - 某種 Data Model 留空（""）或整行刪掉，表示這種 Data Model 不讀
-# - 單段上限：coil、discrete_input 2000 個位址，holding_register 125 個位址
+# - 鍵名：coil、discrete_input、holding_register、input_register
+# - 單段上限：coil、discrete_input 2000 個位址，holding_register、input_register 125 個位址
 #
 # 啟動時會檢查：io_points.csv 的每個點都要完整落在某一段範圍內
 # （Current Position 等占兩個 Word 的點不能跨兩段），範圍不可重疊。
 #
 # 範圍內 io_points 沒定義的位址也會讀，PLC 必須允許讀這些位址；
 # 若 PLC 回 Illegal Data Address，把範圍拆小避開空號，或刪掉本檔改用自動分組
-# （自動分組只讀 io_points 定義的位址，請求筆數較多）。
+# （自動分組只讀 io_points 定義的位址，請求筆數較多）。本檔存在時必須有 [[unit]]。
 
 [[unit]]
 unit_id = 0

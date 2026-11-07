@@ -64,7 +64,7 @@ name = "plc-motion"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "pymodbus" },
+    { name = "pymodbus", extra = ["serial"] },
     { name = "pyside6-essentials" },
 ]
 
@@ -78,7 +78,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "pymodbus", specifier = ">=3.16.1" },
+    { name = "pymodbus", extras = ["serial"], specifier = ">=3.16.2,<3.17" },
     { name = "pyside6-essentials", specifier = ">=6.12.0" },
 ]
 
@@ -150,11 +150,25 @@ wheels = [
 
 [[package]]
 name = "pymodbus"
-version = "3.16.1"
+version = "3.16.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/65/ca/2552fdc467e87a04654af2b6cd994a29653cf767e371792810e15f4715f6/pymodbus-3.16.1.tar.gz", hash = "sha256:19e571826dff37860afc31c845c1fd2fb72acffca02a233506b32d94fa022c33", size = 168950, upload-time = "2026-10-11T17:38:47.372Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/44/e8/910c866f041769d323df554835965571b054b10e1a3265427d246c4d2ccb/pymodbus-3.16.2.tar.gz", hash = "sha256:64057981fac117ed4b75ea8ef6035369f6ae803247700a5efdf75d76a2be8aef", size = 170282, upload-time = "2026-11-03T12:04:07.347Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ee/b4/c6ccb9186b576abbbbffe865544184014fcc0563dfdff00749ca234ca0f8/pymodbus-3.16.1-py3-none-any.whl", hash = "sha256:bb433f7417280bdea1190d95495aa6fb8e1fa8e0d720c436922b270bc378024c", size = 167870, upload-time = "2026-10-11T17:38:45.39Z" },
+    { url = "https://files.pythonhosted.org/packages/51/d4/ac60401cb41999f375887c8dee0902db0bf9d0f43dc6f8b0695483b7016c/pymodbus-3.16.2-py3-none-any.whl", hash = "sha256:385ad145955a7af15020ee55c266f7a2c6d9af2180d45c3755a56db9a5014078", size = 168896, upload-time = "2026-11-03T12:04:05.255Z" },
+]
+
+[package.optional-dependencies]
+serial = [
+    { name = "pyserial" },
+]
+
+[[package]]
+name = "pyserial"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
 ]
 
 [[package]]

@@ -6,7 +6,8 @@ is sent from its own thread; listeners run on that thread too.
 The thread loop, per state:
 
 - ``CONNECTED``: wait until ``interval_ms`` after the start of the previous round
-  (no wait if that round overran, no make-up rounds), then run a round.
+  (no wait if that round overran, no make-up rounds) or until the write queue is not
+  empty (no wait if a write was queued during that round), then run a round.
 - ``RECONNECTING``: wait until ``reconnect_interval_ms`` after the start of the
   previous attempt (or after the connection was lost; no wait if the attempt overran),
   or until ``reconnect()``; then attempt to connect. A failed attempt stays silent.
@@ -24,10 +25,12 @@ its thread dying.
 
 Writes wait in a queue and go out at the start of a round, except the round of a
 connection attempt: the queue is empty then, because only a CONNECTED channel accepts
-writes. A write stays at the head of the queue until it has a result, so everything
-that fails the queue (connection lost, stop) also fails the write in progress. Taking
-the queue and leaving CONNECTED are one step under the lock, so no write can slip in
-behind them and be sent after a reconnect (FR-33).
+writes. A queued write starts the next round at once, and the round after it counts
+``interval_ms`` from there, so reads still run between writes. A write stays at the head
+of the queue until it has a result, so everything that fails the queue (connection lost,
+stop) also fails the write in progress. Taking the queue and leaving CONNECTED are one
+step under the lock, so no write can slip in behind them and be sent after a reconnect
+(FR-33).
 """
 
 from __future__ import annotations
@@ -183,6 +186,7 @@ class Channel:
             if self._stopping or self._status is not DeviceStatus.CONNECTED:
                 return False
             self._writes.append(_Write(ticket, tag, raw))
+            self._cond.notify_all()
             return True
 
     def snapshot(self) -> Snapshot | None:
@@ -237,7 +241,8 @@ class Channel:
             while True:
                 status = self.status
                 if status is DeviceStatus.CONNECTED:
-                    if not self._sleep(round_start + self._device.interval_ms / 1000):
+                    deadline = round_start + self._device.interval_ms / 1000
+                    if not self._sleep(deadline, wake_on_write=True):
                         break
                     round_start = time.monotonic()
                     try:
@@ -502,15 +507,24 @@ class Channel:
 
     # --- helpers ---------------------------------------------------------------------------
 
-    def _sleep(self, deadline: float | None, wake_on_reconnect: bool = False) -> bool:
+    def _sleep(
+        self,
+        deadline: float | None,
+        wake_on_reconnect: bool = False,
+        wake_on_write: bool = False,
+    ) -> bool:
         """Wait until ``deadline`` (monotonic; None = forever); False when stopping.
 
-        With ``wake_on_reconnect`` a reconnect() request ends the wait early.
+        With ``wake_on_reconnect`` a reconnect() request ends the wait early. With
+        ``wake_on_write`` a queued write does, including one queued before the wait began:
+        the queue is checked under the same lock as the wait, so no wake-up is missed.
         """
         with self._cond:
             while not self._stopping:
                 if wake_on_reconnect and self._reconnect_requested:
                     self._reconnect_requested = False
+                    return True
+                if wake_on_write and self._writes:
                     return True
                 if deadline is None:
                     self._cond.wait()

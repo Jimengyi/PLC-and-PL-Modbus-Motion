@@ -17,3 +17,9 @@ def test_qt_widget_shows(qtbot):
 
 def test_system_tray_available(qtbot):
     assert QSystemTrayIcon.isSystemTrayAvailable()
+
+
+def test_modbus_tags_copy_is_0_7_0():
+    from lib.modbus_tags import __version__, open  # noqa: F401
+
+    assert __version__ == "0.7.0"

@@ -34,6 +34,7 @@ log = logging.getLogger("plc_motion.app")
 
 DEFAULT_LOG_RETENTION_DAYS = 30
 EXIT_CONFIG_ERROR = 1
+# 等 worker 執行緒結束的下限；實際取 worker 依通道設定算出的最壞等待（stop_timeout_ms）
 _WORKER_STOP_TIMEOUT_MS = 5000
 
 
@@ -74,15 +75,19 @@ class MotionApp(QObject):
         self.last_status = status
 
     def shutdown(self) -> None:
-        """不寫入任何點（FR-44）：先藏起視窗（頁面依此放開按住中的 JOG），再停 worker。"""
+        """不寫入任何點（FR-44）：先藏起視窗（頁面依此放開按住中的 JOG），再停 worker。
+
+        worker 停止時先等已排入的寫入（含放開 JOG 的 0）有結果或逾時，才關閉連線。
+        """
         if self._shut_down:
             return
         self._shut_down = True
         log.info("程式結束")
         self.window.hide()
         self.worker.stop()
-        if not self.thread.wait(_WORKER_STOP_TIMEOUT_MS):
-            log.error("背景通訊執行緒未在 %s ms 內結束", _WORKER_STOP_TIMEOUT_MS)
+        timeout_ms = max(_WORKER_STOP_TIMEOUT_MS, self.worker.stop_timeout_ms)
+        if not self.thread.wait(timeout_ms):
+            log.error("背景通訊執行緒未在 %s ms 內結束", timeout_ms)
         self.tray.hide()
         self.window.allow_close()
         self.window.close()
@@ -101,7 +106,7 @@ def _port(text: str) -> int:
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="plc-motion", description=APP_TITLE)
-    parser.add_argument("--host", help="PLC IP（暫時覆蓋 device.toml，不寫回）")
+    parser.add_argument("--host", help="PLC IP（暫時覆蓋 modbus/Channel01/device.toml，不寫回）")
     parser.add_argument("--port", type=_port, help="Modbus TCP 埠號（暫時覆蓋 device.toml）")
     parser.add_argument("--config", help="設定資料夾（預設為程式旁的 config）")
     return parser.parse_args(argv)

@@ -1,12 +1,14 @@
 """IO Monitor 頁（spec FR-37 ~ FR-40）。
 
-「數位」（Coil、Discrete Input）與「數值」（Holding Register）兩個分頁，每頁左欄 Read Only、
-右欄 Read Write；Visible = X 的點不顯示，列順序依 io_points.csv。
+「數位」（Bool：Coil、Discrete Input 與暫存器位元 `N.bK`）與「數值」（其他型別：Holding Register、
+Input Register）兩個分頁，每頁左欄 Read Only、右欄 Read Write；Visible = X 的點不顯示，列順序依
+io_points.csv。
 
-- 每列：Check Status 細色條、名稱（B 接點加註「(B)」）、描述（Description 去掉開頭底線，
-  `_M22` 顯示為 `M22`）、目前值（Boolean 燈號＋ON／OFF、U16 數字、Position 換算值＋單位）。
+- 每列：Check Status 細色條、名稱（`invert=true` 加註「(B)」）、描述（Description 去掉開頭底線，
+  `_M22` 顯示為 `M22`）、目前值（Bool 燈號為 PLC 原始值＋ON／OFF；整數型別無倍率顯示整數、
+  有倍率或 F32 以固定小數位數顯示工程值、有單位時加單位；String 顯示文字）。
 - Read Write 的點雙擊寫入：Boolean 切換，數值點開 `ValueDialog`。寫入走 worker 的
-  `write_point`（Position 傳 raw）；鎖定或尚未取得 PLC 狀態時不寫入。
+  `write_point`（值的型別見 `value_dialog`）；鎖定或尚未取得 PLC 狀態時不寫入。
 - 右鍵選單設定 Check Status，立即經 `IoPointTable.save_check_status` 存檔；只改左側色條的
   顏色，整列不上底色。上方顯示各狀態數量（只算畫面上的點）與名稱搜尋。
 """
@@ -30,17 +32,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from lib.modbus_tags import Access
 from plc_motion.plc.snapshot import Snapshot
-from plc_motion.settings.io_points import Access, CheckStatus, DataModel, IoPoint, SensorType
+from plc_motion.settings.io_points import CheckStatus, IoPoint
 from plc_motion.settings.loader import AppConfig
-from plc_motion.ui.jog_pad import format_value, lock_tooltip, segment_button
+from plc_motion.ui.jog_pad import lock_tooltip, segment_button
 from plc_motion.ui.row_hover import enable_row_hover
 from plc_motion.ui.theme import color
-from plc_motion.ui.value_dialog import ValueDialog
+from plc_motion.ui.value_dialog import ValueDialog, format_point_value
 from plc_motion.ui.widgets import Panel
 from plc_motion.worker import EngineStatus
 
-KINDS = (("digital", "數位（Coil / DI）"), ("numeric", "數值（Holding Register）"))
+KINDS = (
+    ("digital", "數位（Coil / DI / 暫存器位元）"),
+    ("numeric", "數值（Holding / Input Register）"),
+)
 STRIPE_COL, NAME_COL, DESC_COL, VALUE_COL = range(4)
 _HEADERS = ("", "名稱", "描述", "值")
 _TAG_ROLE = Qt.ItemDataRole.UserRole
@@ -57,11 +63,11 @@ _STRIPE_ROLE = {
 
 
 def kind_of(point: IoPoint) -> str:
-    return "numeric" if point.data_model == DataModel.HOLDING_REGISTER else "digital"
+    return "digital" if point.data_type == "Bool" else "numeric"
 
 
 def row_name(point: IoPoint) -> str:
-    return f"{point.label}(B)" if point.is_b_contact else point.label
+    return f"{point.label}(B)" if point.invert else point.label
 
 
 def plc_location(point: IoPoint) -> str:
@@ -235,14 +241,12 @@ class IoMonitorPage(QWidget):
             item.setText(_PLACEHOLDER)
             item.setForeground(QBrush())
             return
-        if point.sensor_type == SensorType.BOOLEAN:
+        if point.data_type == "Bool":
             on = bool(self._snapshot.raw(point.tag))
             item.setText(_LAMP_ON if on else _LAMP_OFF)
             item.setForeground(QBrush(color("ok" if on else "text_dim")))
-        elif point.sensor_type == SensorType.POSITION:
-            item.setText(format_value(self._snapshot.value(point.tag), point.scale, point.unit))
         else:
-            item.setText(str(self._snapshot.raw(point.tag)))
+            item.setText(format_point_value(point, self._snapshot.value(point.tag)))
 
     def _update_lock(self) -> None:
         tip = lock_tooltip(self._snapshot, self._status)
@@ -260,14 +264,15 @@ class IoMonitorPage(QWidget):
         if not self._can_write():
             return
         point = self._points.get(self.tag_at(table, row))
-        if point.sensor_type == SensorType.BOOLEAN:
-            self._worker.write_point(point.tag, not bool(self._snapshot.raw(point.tag)))
+        if point.data_type == "Bool":
+            # 寫入邏輯值的相反值：PLC 收到目前原始值的相反值，與 invert 無關
+            self._worker.write_point(point.tag, not self._snapshot.value(point.tag))
             return
         dialog = ValueDialog(point, self._snapshot.value(point.tag), self)
         accepted = dialog.exec() == ValueDialog.DialogCode.Accepted
         # 視窗開著時可能已鎖定或斷線：確認後再檢查一次
-        if accepted and dialog.raw is not None and self._can_write():
-            self._worker.write_point(point.tag, dialog.raw)
+        if accepted and dialog.value is not None and self._can_write():
+            self._worker.write_point(point.tag, dialog.value)
 
     # ---- Check Status ----
 

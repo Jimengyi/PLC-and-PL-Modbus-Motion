@@ -149,6 +149,37 @@ def test_selected_block_shows_nine_lamps_and_codes(page, fake_worker, make_snaps
     assert not any(is_on(lamp) for lamp in page.selected_lamps.values())
 
 
+def captions(page) -> tuple[str, str, str]:
+    lamps = page.selected_lamps
+    return tuple(lamps[k].caption for k in ("pos_limit", "neg_limit", "home_sensor"))
+
+
+def test_sensor_lamps_marked_b_only_when_inverted(page):
+    assert captions(page) == ("+Limit(B)", "−Limit(B)", "Home Sensor")
+    assert "+Limit(B)" in page.selected_lamps["pos_limit"].text()
+    assert page.selected_lamps["servo"].caption == "Servo"
+
+
+def test_sensor_lamp_b_mark_follows_selected_axis(
+    qtbot, config_dir, io_rows, write_io_points, fake_worker, make_snapshot
+):
+    for row in io_rows:
+        if row["Tag Name"] == "Positive Limit 1":
+            row["Attributes"] = ""
+        if row["Tag Name"] == "Home Sensor 2":
+            row["Attributes"] = "invert=true"
+    write_io_points(config_dir, io_rows)
+    p = AxisPage(load_config(config_dir), fake_worker)
+    qtbot.addWidget(p)
+    p.select_axis(1)
+    assert captions(p) == ("+Limit", "−Limit(B)", "Home Sensor")
+    p.select_axis(2)
+    assert captions(p) == ("+Limit(B)", "−Limit(B)", "Home Sensor(B)")
+    p.select_axis(1)
+    assert "+Limit" in p.selected_lamps["pos_limit"].text()
+    assert "(B)" not in p.selected_lamps["pos_limit"].text()
+
+
 def test_target_input_follows_selected_axis_decimals_and_unit(page):
     assert page.target.decimals() == 4
     assert page.target.suffix() == " mm"

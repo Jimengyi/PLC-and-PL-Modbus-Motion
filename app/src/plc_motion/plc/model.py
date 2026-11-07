@@ -1,7 +1,8 @@
 """模擬 PLC 的行為模型（plc-sim 與單元測試共用的唯一實作）。
 
-依 docs/PLC_PC_Modbus_通訊規格.md 與 spec FR-52、FR-53。點位值一律存 raw：
-Boolean 為 bool（輸入點依接點型式存電氣值）、U16 為 int、Position 為有號 I32。
+依 docs/PLC_PC_Modbus_通訊規格.md 與 spec FR-52、FR-53。點位值一律存 raw（PLC 原始值）：
+Bool 為 bool（輸入點依接點型式存電氣值，暫存器位元點亦同）、整數型別為未乘倍率前的 int
+（I16、I32 有號）、F32 為未乘倍率前的 float、String 為 str。Position 即有倍率的 I32。
 PLC 邏輯只在 `step()` 掃描時執行；FR-53 的注入 Alarm 與急停立即生效。
 """
 
@@ -10,13 +11,7 @@ from dataclasses import dataclass
 from enum import Enum, auto
 
 from plc_motion.codec import to_raw
-from plc_motion.plc.snapshot import is_triggered
-from plc_motion.settings.io_points import (
-    AXIS_COUNT,
-    EMERGENCY_STOP,
-    IoPointTable,
-    SensorType,
-)
+from plc_motion.settings.io_points import AXIS_COUNT, EMERGENCY_STOP, IoPointTable
 
 # 速度 100%、speed_factor 1 時的模擬最大速度（工程單位／秒：mm/s 或 deg/s）
 MAX_SPEED = 50.0
@@ -36,7 +31,10 @@ CODE_MOVE = 2
 
 _LIMIT_NAMES = {"pos": "Positive Limit", "neg": "Negative Limit", "home": "Home Sensor"}
 
-Listener = Callable[[str, int | bool], None]
+RawValue = int | bool | float | str
+# 非 Bool 點的初始原始值；未列出的整數型別為 0
+_INITIAL: dict[str, RawValue] = {"F32": 0.0, "String": ""}
+Listener = Callable[[str, RawValue], None]
 
 
 class _Mode(Enum):
@@ -71,13 +69,13 @@ class _Axis:
 class PlcModel:
     def __init__(self, points: IoPointTable):
         self._points = points
-        self._values: dict[str, int | bool] = {}
+        self._values: dict[str, RawValue] = {}
         for p in points.all():
-            if p.sensor_type == SensorType.BOOLEAN:
+            if p.data_type == "Bool":
                 # 輸入點以「未觸發」為初始狀態：B 接點未觸發時讀到 1
-                self._values[p.tag] = p.is_b_contact
+                self._values[p.tag] = p.invert
             else:
-                self._values[p.tag] = 0
+                self._values[p.tag] = _INITIAL.get(p.data_type, 0)
         self._axes = {
             n: _Axis(n, points.axis_tag("Current Position", n).scale)
             for n in range(1, AXIS_COUNT + 1)
@@ -94,10 +92,10 @@ class PlcModel:
     def has_tag(self, tag: str) -> bool:
         return tag in self._values
 
-    def read(self, tag: str) -> int | bool:
+    def read(self, tag: str) -> RawValue:
         return self._values[tag]
 
-    def master_write(self, tag: str, value: int | bool) -> None:
+    def master_write(self, tag: str, value: RawValue) -> None:
         """模擬 Master 的寫入；PLC 端的反應在下一次 step() 發生。"""
         self._set(tag, self._coerce(tag, value))
 
@@ -105,12 +103,17 @@ class PlcModel:
         """點位值有變化時呼叫 fn(tag, value)；來源含 Master 寫入、PLC 邏輯與 FR-53 操作。"""
         self._listeners.append(fn)
 
-    def _coerce(self, tag: str, value: int | bool) -> int | bool:
-        if self._points.get(tag).sensor_type == SensorType.BOOLEAN:
+    def _coerce(self, tag: str, value: RawValue) -> RawValue:
+        data_type = self._points.get(tag).data_type
+        if data_type == "Bool":
             return bool(value)
+        if data_type == "F32":
+            return float(value)
+        if data_type == "String":
+            return str(value)
         return int(value)
 
-    def _set(self, tag: str, value: int | bool) -> None:
+    def _set(self, tag: str, value: RawValue) -> None:
         if self._values[tag] == value:
             return
         self._values[tag] = value
@@ -124,7 +127,8 @@ class PlcModel:
         self._set(f"{name} {ax.n}", value)
 
     def _triggered(self, tag: str) -> bool:
-        return is_triggered(self._points.get(tag), self._values[tag])
+        """輸入點是否觸發：B 接點（invert）讀到 0 為觸發，A 接點讀到 1 為觸發。"""
+        return bool(self._values[tag]) != self._points.get(tag).invert
 
     def _estop_pressed(self) -> bool:
         return self._triggered(EMERGENCY_STOP)
@@ -137,11 +141,11 @@ class PlcModel:
 
     def set_limit(self, axis: int, which: str, triggered: bool) -> None:
         tag = f"{_LIMIT_NAMES[which]} {axis}"
-        b_contact = self._points.get(tag).is_b_contact
+        b_contact = self._points.get(tag).invert
         self._set(tag, not triggered if b_contact else triggered)
 
     def set_estop(self, pressed: bool) -> None:
-        b_contact = self._points.get(EMERGENCY_STOP).is_b_contact
+        b_contact = self._points.get(EMERGENCY_STOP).invert
         self._set(EMERGENCY_STOP, not pressed if b_contact else pressed)
         if pressed:
             for ax in self._axes.values():

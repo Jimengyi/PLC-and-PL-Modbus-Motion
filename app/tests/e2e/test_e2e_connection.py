@@ -87,6 +87,8 @@ def test_ac6_start_without_sim_then_reconnect_manually(e2e, config):
     e2e.until(lambda: f"未連線 127.0.0.1:{port}" in app.window.connection_label.text())
     assert app.window.isVisible()
     assert e2e.enabled_controls() == frozenset()
+    # 連線中也顯示未連線：等這次連線嘗試確定失敗（Windows 連到沒人聽的埠要等到逾時）
+    e2e.until(lambda: "連線失敗" in e2e.log_text(), timeout=10000)
 
     server = SimServer(
         PlcModel(config.points), config.points, "127.0.0.1", port, config.read_ranges

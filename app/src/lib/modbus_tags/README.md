@@ -50,7 +50,7 @@ with modbus_tags.open("config", devices=DEVICES) as bus:   # 進入 start()，�
 | `devices` 對照 | 沒列入的通道以資料夾名稱識別（例如 `Channel02`） |
 | `start()` / `stop()` | 啟動、停止全部通道；連不上的設備不會讓 `start()` 拋錯，狀態會在 `CONNECTING`、`CONNECTED`、`RECONNECTING`、`DISCONNECTED` 間轉換 |
 | `read(ref)` / `snapshot(device)` | 讀最近一輪的值；設備未連線時 `read` 拋 `DeviceDisconnected` |
-| `write(ref, value)` / `write_wait(...)` | 寫入工程值；唯讀、超出範圍、未連線在呼叫當下拋錯，設備端的結果看 `Ticket` |
+| `write(ref, value)` / `write_wait(...)` | 寫入工程值；唯讀、超出範圍、未連線在呼叫當下拋錯，設備端的結果看 `Ticket`。會立刻喚醒通道：等待中或一輪結束時有寫入，就立刻開始新的一輪（先寫入再讀取），不等下一個輪詢週期 |
 | `devices()` / `tags(device)` / `status(device)` | 查詢設備、Tag 與連線狀態 |
 | `stats(device)` | 回傳 `PollStats`：`last_ms`、`average_ms`、`max_ms` 是連線後每輪讀取的耗時，未連線時為 `None`，重新連線後從頭計算；`requests`、`interval_ms` 是每輪讀取請求數與輪詢週期。不通訊、不等待 |
 | `on_change` / `on_status` / `on_write_done` | 註冊事件函式，回傳取消函式 |

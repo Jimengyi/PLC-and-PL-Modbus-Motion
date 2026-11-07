@@ -1,5 +1,6 @@
 """SimServer：以 ModbusTcpClient 直接連線讀寫，斷言回應值與 SimLog（spec FR-51、FR-53、FR-56）。"""
 
+import dataclasses
 import re
 import time
 from pathlib import Path
@@ -7,10 +8,11 @@ from pathlib import Path
 import pytest
 from pymodbus.client import ModbusTcpClient
 
+from lib.modbus_tags import Bus, DataModel, DeviceStatus, ReadOnlyTag
 from plc_motion.codec import join_i32
 from plc_motion.plc import PlcModel
 from plc_motion.settings import load_config
-from plc_motion.settings.io_points import DataModel, SensorType
+from plc_motion.settings.io_points import is_position
 from plc_motion.sim import SimServer
 
 ILLEGAL_ADDRESS = 2
@@ -60,7 +62,7 @@ def read_point(c: ModbusTcpClient, point, device_id: int = 0):
     rr = c.read_holding_registers(point.start_address, count=point.length, device_id=device_id)
     if rr.isError():
         return None
-    if point.sensor_type == SensorType.POSITION:
+    if is_position(point):
         return join_i32(rr.registers[0], rr.registers[1])
     return rr.registers[0]
 
@@ -212,6 +214,47 @@ def test_force_exception_on_tag_and_release(server, client):
     assert not client.write_coil(servo, True, device_id=0).isError()
 
 
+# ---- 故障注入 ----
+
+DEVICE_FAILURE = 4
+
+
+def _median_read_seconds(client, address: int, n: int = 5) -> float:
+    times = []
+    for _ in range(n):
+        t0 = time.perf_counter()
+        assert not client.read_holding_registers(address, count=1, device_id=0).isError()
+        times.append(time.perf_counter() - t0)
+    return sorted(times)[n // 2]
+
+
+def test_set_delay_slows_responses_and_release_restores(server, client):
+    a = addr(server, "Speed 1")
+    base = _median_read_seconds(client, a)
+    server.set_delay(300)
+    assert _median_read_seconds(client, a, n=3) >= 0.28
+    server.set_delay(0)
+    assert _median_read_seconds(client, a) < 0.15
+    assert base < 0.15
+
+
+def test_reject_writes_only_blocks_writes_of_given_tags(server, client):
+    speed = addr(server, "Speed 1")
+    server.reject_writes({"Speed 1"})
+    rr = client.write_register(speed, 50, device_id=0)
+    assert rr.isError() and rr.exception_code == DEVICE_FAILURE
+    with server.lock:
+        assert server.model.read("Speed 1") != 50
+    # 讀取同一點與寫其他點都正常
+    assert read_point(client, server.points.get("Speed 1")) is not None
+    assert not client.write_register(addr(server, "Speed 2"), 60, device_id=0).isError()
+    # 空集合解除
+    server.reject_writes(set())
+    assert not client.write_register(speed, 50, device_id=0).isError()
+    with server.lock:
+        assert server.model.read("Speed 1") == 50
+
+
 # ---- Unit ID ----
 
 
@@ -229,7 +272,7 @@ def test_points_are_separated_by_unit_id(tmp_path, config_dir, io_rows, write_io
             "Address Length": "1",
             "Unit ID": "2",
             "Data Model": "Coil",
-            "Sensor Type": "Boolean",
+            "Data Type": "Bool",
             "Access": "Read Write",
             "Visible": "O",
             "Description": "",
@@ -358,3 +401,226 @@ def test_stop_releases_port(config_dir):
     srv2 = SimServer(srv.model, srv.points, port=srv.port)
     srv2.start()
     srv2.stop()
+
+
+# ---- 多型別（spec FR-13、FR-33）：以 modbus_tags.Bus 走 TCP ----
+
+
+def _row(tag, address, length, model, data_type, access, attributes=""):
+    return {
+        "Tag Name": tag,
+        "Display Name": "",
+        "Start Address": str(address),
+        "Address Length": str(length),
+        "Unit ID": "0",
+        "Data Model": model,
+        "Data Type": data_type,
+        "Access": access,
+        "Visible": "O",
+        "Description": "",
+        "Attributes": attributes,
+        "Check Status": "Unchecked",
+    }
+
+
+_HR, _IR = "Holding Register", "Input Register"
+_RW, _RO = "Read Write", "Read Only"
+EXTRA_ROWS = [
+    _row("Aux U16", 300, 1, _HR, "U16", _RW),
+    _row("Aux I16", 301, 1, _HR, "I16", _RW),
+    _row("Aux U32", 302, 2, _HR, "U32", _RW),
+    _row("Aux U32 HF", 304, 2, _HR, "U32", _RW, "word_order=high_first"),
+    _row("Aux I32", 306, 2, _HR, "I32", _RW, "scale=100;unit=mm"),
+    _row("Aux F32", 308, 2, _HR, "F32", _RW, "byte_swap=true"),
+    _row("Aux String", 310, 4, _HR, "String", _RW),
+    _row("Aux String Swap", 314, 2, _HR, "String", _RW, "byte_swap=true"),
+    _row("Lamp A", "320.b0", 1, _HR, "Bool", _RW),
+    _row("Lamp B", "320.b5", 1, _HR, "Bool", _RW),
+    _row("Door Closed", "320.b9", 1, _HR, "Bool", _RO, "invert=true"),
+    _row("Aux Coil", 400, 1, "Coil", "Bool", _RW),
+    _row("Aux DI", 400, 1, "Discrete Input", "Bool", _RO),
+    _row("Alarm Bit", "321.b2", 1, _HR, "Bool", _RO),
+    _row("IR U16", 0, 1, _IR, "U16", _RO),
+    _row("IR Bit", "1.b3", 1, _IR, "Bool", _RO, "invert=true"),
+    _row("IR F32", 2, 2, _IR, "F32", _RO),
+]
+
+
+@pytest.fixture
+def multi(config_dir, io_rows, write_io_points):
+    """加上多型別非必要點的 SimServer，與連到它的 Bus（已讀完第一輪）。"""
+    write_io_points(config_dir, io_rows + EXTRA_ROWS)
+    config = load_config(config_dir)
+    srv = SimServer(PlcModel(config.points), config.points, port=0)
+    srv.start()
+    device = dataclasses.replace(config.channel.device, tcp_host="127.0.0.1", tcp_port=srv.port)
+    bus = Bus([dataclasses.replace(config.channel, device=device)], {})
+    bus.start()
+    try:
+        wait_until(lambda: bus.status("PLC") == DeviceStatus.CONNECTED and _has_round(bus))
+        yield srv, bus
+    finally:
+        bus.stop()
+        srv.stop()
+
+
+def _has_round(bus) -> bool:
+    snap = bus.snapshot("PLC")
+    return snap is not None and snap.connected
+
+
+def _fresh_read(bus, tag: str, expected) -> None:
+    """等 Bus 的快照讀到 expected。"""
+    wait_until(lambda: bus.read(f"PLC/{tag}") == expected)
+
+
+def _set(srv: SimServer, tag: str, raw) -> None:
+    with srv.lock:
+        srv.model.master_write(tag, raw)
+
+
+def _model(srv: SimServer, tag: str):
+    with srv.lock:
+        return srv.model.read(tag)
+
+
+def _registers(srv: SimServer, address: int, count: int, func="read_holding_registers"):
+    c = ModbusTcpClient("127.0.0.1", port=srv.port, timeout=2, retries=0)
+    assert c.connect()
+    try:
+        rr = getattr(c, func)(address, count=count, device_id=0)
+        assert not rr.isError()
+        return rr.registers
+    finally:
+        c.close()
+
+
+@pytest.mark.parametrize(
+    ("tag", "plc_raw", "read_value", "write_value", "model_after"),
+    [
+        ("Aux U16", 65535, 65535, 1234, 1234),
+        ("Aux I16", -5, -5, -32768, -32768),
+        ("Aux U32", 4_000_000_000, 4_000_000_000, 70000, 70000),
+        ("Aux U32 HF", 4_000_000_000, 4_000_000_000, 70000, 70000),
+        ("Aux I32", -12345, -123.45, -1.5, -150),
+        ("Aux F32", 1.5, 1.5, -2.25, -2.25),
+        ("Aux String", "AB", "AB", "Hello12", "Hello12"),
+        ("Aux String Swap", "xy", "xy", "abcd", "abcd"),
+        ("Aux Coil", True, True, False, False),
+    ],
+)
+def test_bus_reads_and_writes_match_model(
+    multi, tag, plc_raw, read_value, write_value, model_after
+):
+    srv, bus = multi
+    _set(srv, tag, plc_raw)
+    _fresh_read(bus, tag, read_value)
+    bus.write_wait(f"PLC/{tag}", write_value, timeout=3)
+    assert _model(srv, tag) == model_after
+    _fresh_read(bus, tag, write_value)
+
+
+def test_read_only_types_read_model_values(multi):
+    srv, bus = multi
+    _set(srv, "Aux DI", True)
+    _set(srv, "IR U16", 42)
+    _set(srv, "IR F32", 3.25)
+    _fresh_read(bus, "Aux DI", True)
+    _fresh_read(bus, "IR U16", 42)
+    _fresh_read(bus, "IR F32", 3.25)
+
+
+def test_input_register_write_is_refused(multi):
+    srv, bus = multi
+    with pytest.raises(ReadOnlyTag):
+        bus.write_wait("PLC/IR U16", 7, timeout=3)
+    assert _model(srv, "IR U16") == 0
+    # 寫入功能碼到同一位址是 Holding Register，沒有定義的點：回例外
+    c = ModbusTcpClient("127.0.0.1", port=srv.port, timeout=2, retries=0)
+    assert c.connect()
+    rr = c.write_register(0, 7, device_id=0)
+    c.close()
+    assert rr.isError() and rr.exception_code == ILLEGAL_ADDRESS
+    assert _model(srv, "IR U16") == 0
+
+
+def test_word_order_and_byte_swap_register_layout(multi):
+    srv, bus = multi
+    bus.write_wait("PLC/Aux U32", 70000, timeout=3)  # 0x0001_1170
+    bus.write_wait("PLC/Aux U32 HF", 70000, timeout=3)
+    bus.write_wait("PLC/Aux F32", 1.5, timeout=3)  # 0x3FC0_0000
+    bus.write_wait("PLC/Aux String Swap", "abcd", timeout=3)
+    regs = _registers(srv, 302, 8)
+    assert regs[0:2] == [0x1170, 0x0001]  # low_first
+    assert regs[2:4] == [0x0001, 0x1170]  # high_first
+    assert regs[6:8] == [0x0000, 0xC03F]  # low_first + byte_swap
+    assert _registers(srv, 314, 2) == [0x6261, 0x6463]
+
+
+def test_register_bits_are_independent(multi):
+    srv, bus = multi
+    bus.write_wait("PLC/Lamp A", True, timeout=3)
+    assert (_model(srv, "Lamp A"), _model(srv, "Lamp B")) == (True, False)
+    bus.write_wait("PLC/Lamp B", True, timeout=3)
+    assert (_model(srv, "Lamp A"), _model(srv, "Lamp B")) == (True, True)
+    bus.write_wait("PLC/Lamp A", False, timeout=3)
+    assert (_model(srv, "Lamp A"), _model(srv, "Lamp B")) == (False, True)
+    assert _model(srv, "Door Closed") is True  # 唯讀位元不受影響
+    assert _registers(srv, 320, 1) == [(1 << 5) | (1 << 9)]
+    _fresh_read(bus, "Lamp A", False)
+    assert bus.read("PLC/Lamp B") is True
+
+
+def test_register_bit_read_follows_model(multi):
+    srv, bus = multi
+    _set(srv, "Lamp B", True)
+    _fresh_read(bus, "Lamp B", True)
+    assert bus.read("PLC/Lamp A") is False
+
+
+def test_inverted_register_bits_start_untriggered(multi):
+    srv, bus = multi
+    assert bus.read("PLC/Door Closed") is False
+    assert bus.read("PLC/IR Bit") is False
+    assert _registers(srv, 320, 1) == [1 << 9]
+    assert _registers(srv, 1, 1, "read_input_registers") == [1 << 3]
+
+
+def _client(srv: SimServer) -> ModbusTcpClient:
+    c = ModbusTcpClient("127.0.0.1", port=srv.port, timeout=2, retries=0)
+    assert c.connect()
+    return c
+
+
+def test_write_to_register_with_only_read_only_bits_is_illegal_address(multi):
+    srv, _ = multi
+    c = _client(srv)
+    rr = c.write_register(321, 1 << 2, device_id=0)  # 321 只有唯讀的 Alarm Bit
+    c.close()
+    assert rr.isError() and rr.exception_code == ILLEGAL_ADDRESS
+    assert _model(srv, "Alarm Bit") is False
+
+
+def test_register_bit_write_with_stale_read_only_bit_succeeds(multi):
+    srv, _ = multi
+    # PLC 在 Master 讀與寫之間改了唯讀位元；Master 仍帶舊快照（b9 = 1）寫入可寫位元
+    _set(srv, "Door Closed", False)
+    c = _client(srv)
+    rr = c.write_register(320, (1 << 5) | (1 << 9), device_id=0)
+    c.close()
+    assert not rr.isError()
+    assert _model(srv, "Lamp B") is True
+    assert _model(srv, "Door Closed") is False  # 唯讀位元的差異被忽略
+
+
+def test_mask_write_register_changes_only_masked_bit(multi):
+    srv, _ = multi
+    _set(srv, "Lamp B", True)
+    c = _client(srv)
+    # FC22：result = (current AND and_mask) OR (or_mask AND NOT and_mask)，只改 b0
+    rr = c.mask_write_register(address=320, and_mask=0xFFFF & ~1, or_mask=1, device_id=0)
+    c.close()
+    assert not rr.isError()
+    assert _model(srv, "Lamp A") is True
+    assert _model(srv, "Lamp B") is True
+    assert _model(srv, "Door Closed") is True

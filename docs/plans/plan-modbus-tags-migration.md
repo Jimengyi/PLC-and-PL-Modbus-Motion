@@ -4,7 +4,7 @@ created: 2026-11-07
 tags: [modbus, modbus-tags, migration, jog]
 slug: modbus-tags-migration
 goal: "plc-motion 的 Modbus 通訊改由 modbus_tags 負責，交握與安全行為不變，JOG 放開不等輪詢週期，IO Monitor 支援函式庫全部型別"
-status: approved
+status: done
 approved_by: user
 related: ["[[spec-modbus-tags-migration]]", "[[design-modbus-tags-migration]]"]
 ---
@@ -52,7 +52,7 @@ Base branch: main @ 59419e5
 
 ## Tasks
 
-### Task 1: 相依、匯入路徑與副本 0.7.0 [ ]
+### Task 1: 相依、匯入路徑與副本 0.7.0 [x]
 
 Files:
 - Modify: `app/pyproject.toml`
@@ -70,24 +70,24 @@ Related: `C:\Users\jimze\Desktop\Project\AI Project\Python Library\modbus-tags\s
 - 應用程式以 `lib.modbus_tags` 匯入：`[tool.uv.build-backend] module-name = ["plc_motion", "lib.modbus_tags"]`。
 - 相依改為 `pymodbus[serial]>=3.16.2,<3.17`。
 - `app/pyproject.toml` 設定 ruff format 排除 `*.md`，與基底相同：ruff 會格式化 Markdown 內的程式碼區塊，而副本不可手改。
-- `app/src/lib/` 要納入版控。
+- `app/src/lib/` 已在版控內，只更新內容。
 - 副本內容與基底 0.7.0 的 `src/modbus_tags/` 相同。
 
 測試 seam：`tests/test_smoke.py`，加上既有 `tests/sim` 對真實 TCP 的測試。
 
 驗收：（契約層）
-- [ ] `from lib.modbus_tags import open, __version__` 成功，版本為 0.7.0。
-- [ ] 副本與基底 `src/modbus_tags/` 原始檔比對無差異（不含 `__pycache__`）。
-- [ ] `SimServer` 在新版 pymodbus 下，既有 sim 測試維持通過。
-- [ ] `uv run --system-certs ruff check .` 與 `ruff format --check .` 通過。
-- [ ] Run: `uv run --system-certs pytest tests/test_smoke.py tests/sim -q` → 全綠
+- [x] `from lib.modbus_tags import open, __version__` 成功，版本為 0.7.0。
+- [x] 副本與基底 `src/modbus_tags/` 原始檔比對無差異（不含 `__pycache__`）。
+- [x] `SimServer` 在新版 pymodbus 下，既有 sim 測試維持通過。
+- [x] `uv run --system-certs ruff check .` 與 `ruff format --check .` 通過。
+- [x] Run: `uv run --system-certs pytest tests/test_smoke.py tests/sim -q` → 全綠
 
 禁區：
 - 不手改副本內的檔案。
 
 ---
 
-### Task 2: 設定結構與點位表 [ ]
+### Task 2: 設定結構與點位表 [x]
 
 Files:
 - Create: `app/config/app.toml`
@@ -95,7 +95,7 @@ Files:
 - Create: `app/config/modbus/Channel01/io_points.csv`
 - Create: `app/config/modbus/Channel01/read_ranges.toml`
 - Delete: `app/config/device.toml`、`app/config/io_points.csv`、`app/config/read_ranges.toml`
-- Modify: `app/src/plc_motion/settings/io_points.py`、`device.py`、`loader.py`、`__init__.py`
+- Modify: `app/src/plc_motion/settings/io_points.py`、`device.py`、`loader.py`、`__init__.py`（`device.py` 新增 `load_app`、`build_device`）
 - Delete: `app/src/plc_motion/settings/read_ranges.py`、`app/tests/settings/test_read_ranges.py`
 - Modify: `app/src/plc_motion/plc/batching.py`、`modbus_link.py`、`model.py`、`snapshot.py`、`sim/server.py`、`sim/main.py`、`app.py`、`engine/engine.py`（只改 `Access` 匯入）、`ui/io_monitor.py`、`ui/value_dialog.py`（機械式改名，行為不變）
 - Modify: `app/tests/conftest.py`、`app/tests/e2e/conftest.py` 與 `tests/` 內引用舊欄位或舊路徑的測試
@@ -118,13 +118,13 @@ Related: `docs/specs/spec-modbus-tags-migration.md` — FR-6 ~ FR-14、處置表
 測試 seam：檢查規則以 `load_config(config_dir)` 與 `ConfigErrors.errors` 驗；錯誤視窗與結束碼在進入點實際啟動驗（`tests/test_app_entry.py`）；Check Status 從 `IoMonitorPage` 操作，重新載入後比對檔案位元組。
 
 驗收：（契約層）
-- [ ] repo 的預設設定可啟動，連上 `plc-sim`；所有必要 Tag 的位址、Unit ID、Data Model、倍率、單位與轉換前相同。
-- [ ] 分別製造 spec FR-11 的每一種錯誤（每次一種），程式顯示列出該錯誤的視窗後結束，結束碼非 0。
-- [ ] 同層兩種錯誤同時列出；第一層與第二層同時有錯時先列第一層，排除後才出現第二層；`connection.type = "rtu"` 加上某列 Data Model 打錯時兩者都列出。
-- [ ] `byte_swap=false`、`invert=false` 用在必要 Tag 不算錯誤；`word_order=high_first` 用在 `Current Position 1` 報錯。
-- [ ] 在 IO Monitor 設定 Check Status 後重新啟動，狀態保留；比對檔案只有該欄改變。
-- [ ] `plc-motion --host --port` 實際連上 `plc-sim`，設定檔內容不變。
-- [ ] Run: `uv run --system-certs pytest tests/settings tests/plc tests/sim tests/engine tests/ui tests/test_worker.py tests/test_app_entry.py tests/e2e -q`（超過 120 秒，要加長 timeout）→ 全綠
+- [x] repo 的預設設定可啟動，連上 `plc-sim`；所有必要 Tag 的位址、Unit ID、Data Model、倍率、單位與轉換前相同。
+- [x] 分別製造 spec FR-11 的每一種錯誤（每次一種），程式顯示列出該錯誤的視窗後結束，結束碼非 0。
+- [x] 同層兩種錯誤同時列出；第一層與第二層同時有錯時先列第一層，排除後才出現第二層；`connection.type = "rtu"` 加上某列 Data Model 打錯時兩者都列出。
+- [x] `byte_swap=false`、`invert=false` 用在必要 Tag 不算錯誤；`word_order=high_first` 用在 `Current Position 1` 報錯。
+- [x] 在 IO Monitor 設定 Check Status 後重新啟動，狀態保留；比對檔案只有該欄改變。
+- [x] `plc-motion --host --port` 實際連上 `plc-sim`，設定檔內容不變。
+- [x] Run: `uv run --system-certs pytest tests/settings tests/plc tests/sim tests/engine tests/ui tests/test_worker.py tests/test_app_entry.py tests/e2e -q`（超過 120 秒，要加長 timeout）→ 全綠
 
 禁區：
 - 不動 `engine/engine.py`、`engine/handshake.py` 的邏輯。
@@ -135,7 +135,7 @@ Related: `docs/specs/spec-modbus-tags-migration.md` — FR-6 ~ FR-14、處置表
 
 ---
 
-### Task 3: 邏輯值快照與 B 接點顯示 [ ]
+### Task 3: 邏輯值快照與 B 接點顯示 [x]
 
 Files:
 - Modify: `app/src/plc_motion/plc/snapshot.py`、`port.py`、`model.py`、`modbus_link.py`
@@ -156,19 +156,19 @@ Depends on: Task 2
 測試 seam：引擎測試透過 `ModelPort`；畫面透過 `IoMonitorPage`、`AxisPage`，e2e 走 `plc-sim`。
 
 驗收：（契約層）
-- [ ] B 接點點位在 `plc-sim` 為 1 時：IO Monitor 亮燈、名稱有 `(B)`；軸控頁燈號名稱有 `(B)`、顯示未觸發。改為 0 時：IO Monitor 不亮；軸控頁顯示觸發，對應方向 JOG 被拒。
-- [ ] 把 `Positive Limit 1` 的 `invert=true` 拿掉後可以啟動，`plc-sim` 把該點設為 1 時，軸控頁顯示正極限觸發、名稱沒有 `(B)`、正向 JOG 被拒。
-- [ ] Emergency Stop 為 B 接點且在 `plc-sim` 為 0 時，移動命令被拒絕，理由是急停；改為 A 接點時，`plc-sim` 為 1 才拒絕。
-- [ ] 測試設定新增 `invert=true` 的可寫 Coil，在 IO Monitor 雙擊：模擬器收到目前原始值的相反值，燈號跟著模擬器原始值變化。
-- [ ] 引擎既有測試不改邏輯仍全部通過。
-- [ ] Run: `uv run --system-certs pytest tests/plc tests/engine tests/ui tests/e2e/test_e2e_points_io.py -q` → 全綠
+- [x] B 接點點位在 `plc-sim` 為 1 時：IO Monitor 亮燈、名稱有 `(B)`；軸控頁燈號名稱有 `(B)`、顯示未觸發。改為 0 時：IO Monitor 不亮；軸控頁顯示觸發，對應方向 JOG 被拒。
+- [x] 把 `Positive Limit 1` 的 `invert=true` 拿掉後可以啟動，`plc-sim` 把該點設為 1 時，軸控頁顯示正極限觸發、名稱沒有 `(B)`、正向 JOG 被拒。
+- [x] Emergency Stop 為 B 接點且在 `plc-sim` 為 0 時，移動命令被拒絕，理由是急停；改為 A 接點時，`plc-sim` 為 1 才拒絕。
+- [x] 測試設定新增 `invert=true` 的可寫 Coil，在 IO Monitor 雙擊：模擬器收到目前原始值的相反值，燈號跟著模擬器原始值變化。
+- [x] 引擎既有測試不改邏輯仍全部通過。
+- [x] Run: `uv run --system-certs pytest tests/plc tests/engine tests/ui tests/e2e/test_e2e_points_io.py -q` → 全綠
 
 禁區：
 - 不動 `engine/` 的判斷邏輯，也不在引擎出現依 B 接點判斷的寫法。
 
 ---
 
-### Task 4: plc-sim 故障注入 [ ]
+### Task 4: plc-sim 故障注入 [x]
 
 Files:
 - Modify: `app/src/plc_motion/sim/server.py`
@@ -186,16 +186,16 @@ Depends on: Task 2
 測試 seam：`SimServer` 搭配 pymodbus client 走 TCP。
 
 驗收：（契約層）
-- [ ] 設延遲後，client 量到的回應時間增加；解除後回到原水準。
-- [ ] 拒絕 `Speed 1` 寫入時，client 收到例外碼 4，讀取 `Speed 1` 與寫其他點正常。
-- [ ] Run: `uv run --system-certs pytest tests/sim/test_server.py -q` → 全綠
+- [x] 設延遲後，client 量到的回應時間增加；解除後回到原水準。
+- [x] 拒絕 `Speed 1` 寫入時，client 收到例外碼 4，讀取 `Speed 1` 與寫其他點正常。
+- [x] Run: `uv run --system-certs pytest tests/sim/test_server.py -q` → 全綠
 
 禁區：
 - 例外碼不可用 1：函式庫遇到它會改用 FC16 重試。
 
 ---
 
-### Task 5: TagsLink [ ]
+### Task 5: TagsLink [x]
 
 Files:
 - Create: `app/src/plc_motion/plc/tags_link.py`
@@ -214,8 +214,8 @@ Related: `app/src/lib/modbus_tags/bus.py`、`channel.py`、`model.py`；`docs/de
 | `connect()` | 建立並啟動新 `Bus`，不阻塞；套用 host、port，且 `auto_reconnect` 一律關閉 |
 | `poll() -> Snapshot \| None` | 依序：先取最新快照、再查寫入失敗與連線狀態。有失敗或斷線 raise `PlcCommError`；狀態不是 CONNECTED 時回 `None`，第一輪快照要等 CONNECTED 才交出；已連線且有新快照時回傳；否則回 `None` |
 | `connected`、`connecting` | 目前狀態 |
-| `write(tag, value)` | 排入佇列後返回；未連線 raise `PlcCommError`；範圍或型別錯誤（`ValueOutOfRange`、`TypeError`、`ReadOnlyTag`）原樣拋出，不算通訊失敗 |
-| `write_wait(tag, value, timeout)` | 等結果，失敗或逾時 raise `PlcCommError` |
+| `write(tag, value)` | 排入佇列後返回；未連線 raise `PlcCommError`；範圍或型別錯誤（`ValueOutOfRange`、`TypeError`、`ReadOnlyTag`）原樣拋出，不算通訊失敗；io_points 沒有的 Tag raise `PlcCommError`（與 `ModelPort` 一致） |
+| `write_wait(tag, value, timeout)` | 等結果，失敗或逾時 raise `PlcCommError`；io_points 沒有的 Tag raise `PlcCommError` |
 | `drain(timeout)` | 等已排入的寫入有結果或逾時 |
 | `close()` | 先 `drain`，再停止 Bus；可重複呼叫 |
 | `request_count`、`read_ms`、`cycle_ms` | 通訊統計；`cycle_ms` 為相鄰快照時間差，第一輪為 `None` |
@@ -225,15 +225,15 @@ Related: `app/src/lib/modbus_tags/bus.py`、`channel.py`、`model.py`；`docs/de
 測試 seam：`TagsLink` 公開方法，對 `SimServer` 走真實 TCP；需要控制時序的驗收，以建構參數注入「建立 Bus 的方式」，不測 `Channel` 內部。
 
 驗收：（契約層）
-- [ ] 必要位置點寫入的 I32 與 PC 端換算值完全相同，涵蓋負值、三種倍率與 I32 邊界值。
-- [ ] 同一批寫入在模擬器的順序與呼叫順序相同。
-- [ ] `device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時，連線中斷後 `poll()` raise，之後不會自動連上。
-- [ ] 替身讓快照已更新且同時有寫入失敗：`poll()` raise，不回傳該快照。
-- [ ] 通道未完成新的一輪時連續呼叫 `poll()`：同一輪只回傳一次快照，之後回 `None`（判斷依 `Snapshot.time`；`Bus.snapshot()` 每次都回新物件）。
-- [ ] 替身讓第一輪快照已更新、狀態仍是 CONNECTING：`poll()` 回 `None`；狀態變成 CONNECTED 後才回傳該快照。
-- [ ] 寫入被拒時訊息含 Tag Name 與位址；批次讀取被拒時訊息含 Data Model 與位址範圍。
-- [ ] 佇列有寫入時呼叫 `close()`，模擬器收到這些寫入後連線才結束。
-- [ ] Run: `uv run --system-certs pytest tests/plc/test_tags_link.py -q` → 全綠
+- [x] 必要位置點寫入的 I32 與 PC 端換算值完全相同，涵蓋負值、三種倍率與 I32 邊界值。
+- [x] 同一批寫入在模擬器的順序與呼叫順序相同。
+- [x] `device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時，連線中斷後 `poll()` raise，之後不會自動連上。
+- [x] 替身讓快照已更新且同時有寫入失敗：`poll()` raise，不回傳該快照。
+- [x] 通道未完成新的一輪時連續呼叫 `poll()`：同一輪只回傳一次快照，之後回 `None`（判斷依 `Snapshot.time`；`Bus.snapshot()` 每次都回新物件）。
+- [x] 替身讓第一輪快照已更新、狀態仍是 CONNECTING：`poll()` 回 `None`；狀態變成 CONNECTED 後才回傳該快照。
+- [x] 寫入被拒時訊息含 Tag Name 與位址；批次讀取被拒時訊息含 Data Model 與位址範圍。
+- [x] 佇列有寫入時呼叫 `close()`，模擬器收到這些寫入後連線才結束。
+- [x] Run: `uv run --system-certs pytest tests/plc/test_tags_link.py -q` → 全綠
 
 禁區：
 - 不匯入 PySide6。不使用函式庫底線開頭的成員。
@@ -243,14 +243,14 @@ Related: `app/src/lib/modbus_tags/bus.py`、`channel.py`、`model.py`；`docs/de
 
 ---
 
-### Task 6: Worker 改用 TagsLink [ ]
+### Task 6: Worker 改用 TagsLink [x]
 
 Files:
 - Modify: `app/src/plc_motion/worker.py`、`app.py`
 - Modify: `app/src/plc_motion/engine/engine.py`、`handshake.py`（只改時序敘述，並新增 JOG 查詢屬性）
 - Delete: `app/src/plc_motion/plc/modbus_link.py`、`batching.py`、`app/tests/plc/test_modbus_link.py`、`test_batching.py`
 - Modify: `app/src/plc_motion/plc/__init__.py`
-- Test: `app/tests/test_worker.py`、`app/tests/e2e/`
+- Test: `app/tests/test_worker.py`、`app/tests/e2e/`、`app/tests/settings/test_default_config.py`（原本匯入被刪的 `batching`）
 
 Difficulty: 複雜
 Depends on: Task 5
@@ -268,21 +268,21 @@ Related: `docs/design/design-modbus-tags-migration.md` 的「執行流程」「�
 測試 seam：`PlcWorker` 的 signal；e2e 用真 `MainWindow`／`PlcWorker` 走 TCP 連 `SimServer`，看模擬器寫入紀錄、畫面與日誌。
 
 驗收：（契約層）
-- [ ] `interval_ms = 1000` 時按住再放開 JOG，模擬器在放開後 100 ms 內記錄 JOG = 0；預設週期下也一樣。
-- [ ] 按住 JOG 時結束程式，模擬器紀錄最終該 JOG 點為 0；按住 JOG 時按重新連線，也一樣。
-- [ ] Code 2 多軸移動，每軸的寫入順序是 `Target Position`、`Speed`、`PC Action Code`、`Request`，寫入 PLC 的 I32 與 PC 端換算值完全相同。
-- [ ] `plc-sim` 加上通訊延遲，使快照晚於寫入時，移動與原點復歸都正確完成，不提前結束也不逾時。
-- [ ] PLC 值連續數輪不變時，交握逾時仍會在設定時間後觸發。
-- [ ] 主規格中與移動、原點復歸、Reset Alarm、殘留交握、JOG 殘留有關的驗收條件全部維持通過（對應既有測試：`tests/engine`、`tests/e2e/test_e2e_motion.py`、`tests/e2e/test_e2e_connection.py`）。
-- [ ] 啟動時連不上，主視窗照常開啟並顯示未連線；`plc-sim` 啟動後不會自動連上，按重新連線才連上。
-- [ ] 連線中 `plc-sim` 中斷所有連線，畫面顯示未連線，操作以「通訊中斷」結束，之後不會自動重連。`device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時也一樣，且下次手動連線仍執行殘留交握與 JOG 殘留檢查。
-- [ ] `plc-sim` 拒絕 `Speed` 寫入時按住 JOG：模擬器紀錄最終該 JOG 點為 0，畫面顯示未連線與「軸可能仍在移動，請按急停」，日誌含該 Tag Name 與位址。
-- [ ] `plc-sim` 拒絕 `Speed` 與 JOG 點的寫入時按住 JOG：畫面顯示未連線與同樣提示，日誌記錄寫 0 失敗。
-- [ ] Code 2 移動中 `plc-sim` 拒絕 `Target Position`：模擬器沒有收到該軸的 `Request = 1`，操作以「通訊中斷」結束。
-- [ ] 寫入失敗後重新連線，斷線前排隊的寫入在重新連線之後不會送出；殘留交握與 JOG 殘留的處理同主規格。
-- [ ] 通訊品質畫面的讀取耗時、週期、請求數與連線後第一輪無週期值，都符合 spec FR-18。
-- [ ] 以可注入建立 Bus 的方式製造「快照已更新且同時有寫入失敗」：引擎沒有收到 tick，判定為通訊中斷。
-- [ ] Run: `uv run --system-certs pytest tests/test_worker.py tests/e2e tests/engine tests/ui -q`（超過 120 秒，要加長 timeout）→ 全綠
+- [x] `interval_ms = 1000` 時按住再放開 JOG，模擬器在放開後 100 ms 內記錄 JOG = 0；預設週期下也一樣。
+- [x] 按住 JOG 時結束程式，模擬器紀錄最終該 JOG 點為 0；按住 JOG 時按重新連線，也一樣。
+- [x] Code 2 多軸移動，每軸的寫入順序是 `Target Position`、`Speed`、`PC Action Code`、`Request`，寫入 PLC 的 I32 與 PC 端換算值完全相同。
+- [x] `plc-sim` 加上通訊延遲，使快照晚於寫入時，移動與原點復歸都正確完成，不提前結束也不逾時。
+- [x] PLC 值連續數輪不變時，交握逾時仍會在設定時間後觸發。
+- [x] 主規格中與移動、原點復歸、Reset Alarm、殘留交握、JOG 殘留有關的驗收條件全部維持通過（對應既有測試：`tests/engine`、`tests/e2e/test_e2e_motion.py`、`tests/e2e/test_e2e_connection.py`）。
+- [x] 啟動時連不上，主視窗照常開啟並顯示未連線；`plc-sim` 啟動後不會自動連上，按重新連線才連上。
+- [x] 連線中 `plc-sim` 中斷所有連線，畫面顯示未連線，操作以「通訊中斷」結束，之後不會自動重連。`device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時也一樣，且下次手動連線仍執行殘留交握與 JOG 殘留檢查。
+- [x] `plc-sim` 拒絕 `Speed` 寫入時按住 JOG：模擬器紀錄最終該 JOG 點為 0，畫面顯示未連線與「軸可能仍在移動，請按急停」，日誌含該 Tag Name 與位址。
+- [x] `plc-sim` 拒絕 `Speed` 與 JOG 點的寫入時按住 JOG：畫面顯示未連線與同樣提示，日誌記錄寫 0 失敗。
+- [x] Code 2 移動中 `plc-sim` 拒絕 `Target Position`：模擬器沒有收到該軸的 `Request = 1`，操作以「通訊中斷」結束。
+- [x] 寫入失敗後重新連線，斷線前排隊的寫入在重新連線之後不會送出；殘留交握與 JOG 殘留的處理同主規格。
+- [x] 通訊品質畫面的讀取耗時、週期、請求數與連線後第一輪無週期值，都符合 spec FR-18。
+- [x] 以可注入建立 Bus 的方式製造「快照已更新且同時有寫入失敗」：引擎沒有收到 tick，判定為通訊中斷。
+- [x] Run: `uv run --system-certs pytest tests/test_worker.py tests/e2e tests/engine tests/ui -q`（超過 120 秒，要加長 timeout）→ 全綠
 
 禁區：
 - 不改引擎和交握的判斷邏輯。
@@ -294,7 +294,7 @@ Related: `docs/design/design-modbus-tags-migration.md` 的「執行流程」「�
 
 ---
 
-### Task 7: plc-sim 多型別 [ ]
+### Task 7: plc-sim 多型別 [x]
 
 Files:
 - Modify: `app/src/plc_motion/plc/model.py`、`sim/server.py`
@@ -314,20 +314,20 @@ Related: `app/src/lib/modbus_tags/datatypes.py`、`config/points.py`；`docs/spe
 測試 seam：`SimServer` 搭配 `lib.modbus_tags.Bus` 走 TCP，透過 `Bus` 的 `read`、`write_wait` 與 `PlcModel` 觀測。
 
 驗收：（契約層）
-- [ ] 上述每種型別與 Data Model，`Bus` 讀寫的值都與模型相同；Input Register 寫入被拒。
-- [ ] 非必要 `U32` 設 `word_order=high_first` 時，`Bus` 讀寫正確。
-- [ ] 同一暫存器的兩個位元分別寫入，互不影響。
-- [ ] `invert=true` 的暫存器位元點，啟動後 `Bus` 讀到未觸發。
-- [ ] 主規格 FR-52、FR-53、FR-56、FR-62 的既有測試維持通過。
-- [ ] Run: `uv run --system-certs pytest tests/plc/test_model.py tests/sim -q` → 全綠
+- [x] 上述每種型別與 Data Model，`Bus` 讀寫的值都與模型相同；Input Register 寫入被拒。
+- [x] 非必要 `U32` 設 `word_order=high_first` 時，`Bus` 讀寫正確。
+- [x] 同一暫存器的兩個位元分別寫入，互不影響。
+- [x] `invert=true` 的暫存器位元點，啟動後 `Bus` 讀到未觸發。
+- [x] 主規格 FR-52、FR-53、FR-56、FR-62 的既有測試維持通過。
+- [x] Run: `uv run --system-certs pytest tests/plc/test_model.py tests/sim -q` → 全綠
 
 ---
 
-### Task 8: IO Monitor 多型別 [ ]
+### Task 8: IO Monitor 多型別 [x]
 
 Files:
 - Modify: `app/src/plc_motion/ui/io_monitor.py`、`value_dialog.py`、`worker.py`（寫入日誌）、`engine/engine.py`（只放寬 `write_point` 型別註記）
-- Test: `app/tests/ui/test_io_monitor.py`、`app/tests/e2e/test_e2e_points_io.py`
+- Test: `app/tests/ui/test_io_monitor.py`、`app/tests/e2e/test_e2e_points_io.py`、`app/tests/test_worker.py`、`app/tests/e2e/conftest.py`（teardown 清理 Qt 物件）
 
 Difficulty: 複雜
 Depends on: Task 7
@@ -336,18 +336,18 @@ Related: `docs/specs/spec-modbus-tags-migration.md`、`docs/specs/spec-modbus-ma
 介面契約：（契約層）
 
 - 分頁、顯示與寫入依 spec FR-29 ~ FR-31。
-- `ValueDialog` 回傳要交給 `write_point` 的值：有 `scale` 的點回傳 `float` 工程值；必要位置點維持回傳 `int` 原始值；其餘依型別回傳 `int`、`float` 或 `str`。
+- `ValueDialog.value`（原 `raw`）回傳要交給 `write_point` 的值：有 `scale` 的點回傳 `float` 工程值；必要位置點維持回傳 `int` 原始值；其餘依型別回傳 `int`、`float` 或 `str`。
 - `lib.modbus_tags.datatypes.encode` 可用來驗證範圍。
 - Worker 的 IO 寫入日誌能記錄 `float`、`str`，寫入 `String` 不會因記錄日誌而判定斷線。
 
 測試 seam：`IoMonitorPage`、`ValueDialog`，e2e 用真 `MainWindow` 連 `plc-sim`。
 
 驗收：（契約層）
-- [ ] 測試設定新增下列非必要點，連上 `plc-sim` 後 IO Monitor 都顯示正確值，分頁符合 FR-29：`I16`、`U32`、`I32`（含 `scale`、`unit`）、`F32`、`String`、Holding Register 位元（`N.bK`）、Input Register。
-- [ ] 上述可寫點從 IO Monitor 手動寫入，`plc-sim` 收到的值正確、其他位元或相鄰位址不受影響；超出範圍或格式錯誤時，視窗顯示原因且不寫入。
-- [ ] `word_order=high_first` 的非必要 `U32` 能正確讀寫。
-- [ ] `Speed` 維持 1 ~ 100。
-- [ ] Run: `uv run --system-certs pytest tests/ui/test_io_monitor.py tests/e2e/test_e2e_points_io.py -q` → 全綠
+- [x] 測試設定新增下列非必要點，連上 `plc-sim` 後 IO Monitor 都顯示正確值，分頁符合 FR-29：`I16`、`U32`、`I32`（含 `scale`、`unit`）、`F32`、`String`、Holding Register 位元（`N.bK`）、Input Register。
+- [x] 上述可寫點從 IO Monitor 手動寫入，`plc-sim` 收到的值正確、其他位元或相鄰位址不受影響；超出範圍或格式錯誤時，視窗顯示原因且不寫入。
+- [x] `word_order=high_first` 的非必要 `U32` 能正確讀寫。
+- [x] `Speed` 維持 1 ~ 100。
+- [x] Run: `uv run --system-certs pytest tests/ui/test_io_monitor.py tests/e2e/test_e2e_points_io.py -q` → 全綠
 
 禁區：
 - 不改左右欄與整體版面。
@@ -358,10 +358,11 @@ Related: `docs/specs/spec-modbus-tags-migration.md`、`docs/specs/spec-modbus-ma
 
 ---
 
-### Task 9: 打包、文件與整合驗收 [ ]
+### Task 9: 打包、文件與整合驗收 [x]
 
 Files:
-- Modify: `app/packaging/build.py`、`THIRD_PARTY_NOTICES.md`、`plc_motion.spec`
+- Modify: `app/packaging/build.py`、`app/packaging/THIRD_PARTY_NOTICES.md`（`plc_motion.spec` 不需修改：匯入分析已帶入 `lib.modbus_tags`）
+- Create: `app/packaging/pyserial-LICENSE.txt`
 - Modify: `docs/specs/spec-modbus-master-app.md`、`docs/design/design-system-blueprint.md`、`app/README.md`、`CLAUDE.md`
 - Create: `app/tests/test_no_qt_in_core.py`
 - Test: `app/tests/test_packaging.py`
@@ -379,11 +380,11 @@ Related: `docs/specs/spec-modbus-tags-migration.md` 的「主規格條文處置�
 測試 seam：`test_no_qt_in_core.py`、`pytest -m slow` 的打包測試。
 
 驗收：（契約層）
-- [ ] 自動測試掃描交握邏輯、通訊 adapter、快照與設定載入的匯入，出現 PySide6 就失敗；此測試在匯入 PySide6 的突變下會失敗。
-- [ ] 打包後的 exe 不帶 `plc_motion.sim` 也能啟動，連上 `plc-sim` 後可以讀到快照；輸出資料夾含 pyserial 授權聲明與新的 config 結構。（觀測：`uv run pytest -m slow`）
-- [ ] app 全套 `pytest`、`-m slow`、`ruff check`、`ruff format --check` 通過；已知的環境失敗（主規格 AC-33 前景鎖定）要列出並單獨確認，不靜默略過。
-- [ ] 實際啟動 `plc-motion` 與 `plc-sim`，截圖確認 IO Monitor 與軸控頁顯示正確。
-- [ ] Run: `uv run --system-certs pytest tests/test_no_qt_in_core.py -q && uv run --system-certs pytest -m slow -q` → 全綠
+- [x] 自動測試掃描交握邏輯、通訊 adapter、快照與設定載入的匯入，出現 PySide6 就失敗；此測試在匯入 PySide6 的突變下會失敗。
+- [x] 打包後的 exe 不帶 `plc_motion.sim` 也能啟動，連上 `plc-sim` 後可以讀到快照；輸出資料夾含 pyserial 授權聲明與新的 config 結構。（觀測：`uv run pytest -m slow`）
+- [x] app 全套 `pytest`、`-m slow`、`ruff check`、`ruff format --check` 通過；已知的環境失敗（主規格 AC-33 前景鎖定）要列出並單獨確認，不靜默略過。
+- [x] 實際啟動 `plc-motion` 與 `plc-sim`，截圖確認 IO Monitor 與軸控頁顯示正確。
+- [x] Run: `uv run --system-certs pytest tests/test_no_qt_in_core.py -q && uv run --system-certs pytest -m slow -q` → 全綠
 
 禁區：
 - 不修改 `docs/PLC_PC_Modbus_通訊規格.md`、`七軸_Modbus位址表.md`、xlsx。
