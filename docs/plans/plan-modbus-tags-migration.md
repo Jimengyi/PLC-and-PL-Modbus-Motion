@@ -294,7 +294,7 @@ Related: `docs/design/design-modbus-tags-migration.md` 的「執行流程」「�
 
 ---
 
-### Task 7: plc-sim 多型別 [ ]
+### Task 7: plc-sim 多型別 [x]
 
 Files:
 - Modify: `app/src/plc_motion/plc/model.py`、`sim/server.py`
@@ -314,12 +314,12 @@ Related: `app/src/lib/modbus_tags/datatypes.py`、`config/points.py`；`docs/spe
 測試 seam：`SimServer` 搭配 `lib.modbus_tags.Bus` 走 TCP，透過 `Bus` 的 `read`、`write_wait` 與 `PlcModel` 觀測。
 
 驗收：（契約層）
-- [ ] 上述每種型別與 Data Model，`Bus` 讀寫的值都與模型相同；Input Register 寫入被拒。
-- [ ] 非必要 `U32` 設 `word_order=high_first` 時，`Bus` 讀寫正確。
-- [ ] 同一暫存器的兩個位元分別寫入，互不影響。
-- [ ] `invert=true` 的暫存器位元點，啟動後 `Bus` 讀到未觸發。
-- [ ] 主規格 FR-52、FR-53、FR-56、FR-62 的既有測試維持通過。
-- [ ] Run: `uv run --system-certs pytest tests/plc/test_model.py tests/sim -q` → 全綠
+- [x] 上述每種型別與 Data Model，`Bus` 讀寫的值都與模型相同；Input Register 寫入被拒。
+- [x] 非必要 `U32` 設 `word_order=high_first` 時，`Bus` 讀寫正確。
+- [x] 同一暫存器的兩個位元分別寫入，互不影響。
+- [x] `invert=true` 的暫存器位元點，啟動後 `Bus` 讀到未觸發。
+- [x] 主規格 FR-52、FR-53、FR-56、FR-62 的既有測試維持通過。
+- [x] Run: `uv run --system-certs pytest tests/plc/test_model.py tests/sim -q` → 全綠
 
 ---
 
