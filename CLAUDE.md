@@ -16,6 +16,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 全套測試含 e2e 約 4 分鐘，超過 Bash 工具預設 120 秒：背景執行或加長 timeout。
 - `plc-motion` 有全機共用的單一實例鎖：本機有 plc-motion 在跑時，進入點測試會 skip、打包 exe 測試會失敗。測完一律結束 plc-motion／plc-sim 行程；plc-sim 執行中 `uv run` 可能因檔案被鎖報 "Failed to spawn"。
 - 測試要載入預設設定時，先把 `app/config` 複製到 tmp 再載入：`load_config` 會自動建立 `positions.csv`，切主題會寫回 `device.toml`。
+- `config/read_ranges.toml` 存在時，io_points 每個點都必須落在某段範圍內，否則啟動檢查失敗：新增點位要同步加範圍。用預設 config 建 `SimServer` 時要傳 `config.read_ranges`，否則範圍內的空號位址會回 Illegal Data Address。`tests/conftest.py` 的 `config_dir` fixture 沒有這個檔，走自動分組。
 - `uv sync` 遇 TLS `invalid peer certificate: UnknownIssuer` 時加 `--system-certs`。換 PySide6 套件後出現 QtCore「DLL load failed」：`uv sync --reinstall-package pyside6-essentials --reinstall-package shiboken6`。
 - 要讓使用者看到 plc-motion／plc-sim 視窗，用 PowerShell `Start-Process` 啟動 `.venv\Scripts\*.exe`；從 Bash 背景執行時行程會跑但視窗不顯示。
 - 套用樣式表時 SpinBox 不要設 `NoButtons`：內部文字框寬度會變 1 px、數字看不到。改用 `ui/widgets.py` 的 `plain_spinbox`（QSS 把上下鍵寬度設 0）。
