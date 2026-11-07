@@ -14,6 +14,7 @@
 
 import dataclasses
 import re
+import threading
 import time
 from collections.abc import Callable
 
@@ -36,6 +37,9 @@ BusFactory = Callable[[ChannelConfig], Bus]
 
 # 函式庫讀取失敗原因的格式（channel.py）：用來改寫成「批次讀取 <Data Model> <起> ~ <迄>」
 _READ_REASON = re.compile(r"read unit (\d+) (\w+) address (\d+) count (\d+)")
+
+# 通道先把狀態設成 DISCONNECTED、之後才通知原因：poll 在這個空檔看到斷線時等原因的上限
+_REASON_WAIT_S = 0.1
 
 
 def _default_bus(channel: ChannelConfig) -> Bus:
@@ -74,6 +78,7 @@ class TagsLink(PlcPort):
         self._bus: Bus | None = None
         self._pending: list[tuple[Ticket, IoPoint]] = []
         self._reason = ""  # 通道最近一次回報的狀態原因（通道執行緒寫入）
+        self._reason_event = threading.Event()  # 記下 _reason 後 set
         self._was_connected = False
         self._last_time = None  # 最近交出的快照的 Snapshot.time
         self._cycle_ms: float | None = None
@@ -85,6 +90,7 @@ class TagsLink(PlcPort):
         self.close()
         self._pending = []
         self._reason = ""
+        self._reason_event.clear()
         self._was_connected = False
         self._last_time = None
         self._cycle_ms = None
@@ -208,6 +214,7 @@ class TagsLink(PlcPort):
         # 通道執行緒呼叫：只記原因，不做其他事
         if status is DeviceStatus.DISCONNECTED and reason != "stopped":
             self._reason = reason
+            self._reason_event.set()
 
     def _status(self) -> DeviceStatus:
         if self._bus is None:
@@ -243,6 +250,8 @@ class TagsLink(PlcPort):
             )
 
     def _lost_error(self) -> PlcCommError:
+        if not self._reason:
+            self._reason_event.wait(_REASON_WAIT_S)
         reason = _describe_reason(self._reason) if self._reason else "連線已中斷"
         if self._was_connected:
             return PlcCommError(f"與 PLC {self._endpoint} 的通訊中斷：{reason}")

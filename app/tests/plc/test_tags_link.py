@@ -6,6 +6,7 @@
 
 import re
 import socket
+import threading
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -311,6 +312,7 @@ class FakeBus:
         self.started = False
         self.stopped = False
         self.t0 = datetime.now().astimezone()
+        self.listeners = []
 
     def set_round(self, n: int) -> None:
         """第 n 輪讀取完成（時間相差 n × 200 ms）。"""
@@ -325,7 +327,18 @@ class FakeBus:
         self.stopped = True
 
     def on_status(self, func):
+        self.listeners.append(func)
         return lambda: None
+
+    def lose(self, reason: str, notify_after_s: float) -> None:
+        """像通道一樣：先變成 DISCONNECTED，過一段時間才通知原因。"""
+        self.state = DeviceStatus.DISCONNECTED
+
+        def notify():
+            for func in self.listeners:
+                func("PLC", DeviceStatus.DISCONNECTED, reason)
+
+        threading.Timer(notify_after_s, notify).start()
 
     def status(self, device):
         return self.state
@@ -390,6 +403,17 @@ def test_first_round_waits_for_connected(fake):
     snap = lk.poll()
     assert snap is not None and snap.value("Speed 1") == 1
     assert lk.cycle_ms is None
+
+
+def test_lost_reason_reported_after_status_is_still_in_message(fake):
+    lk, bus = fake
+    bus.state = DeviceStatus.CONNECTED
+    bus.set_round(1)
+    assert lk.poll() is not None
+    bus.lose("read unit 1 holding_register address 100 count 10: no response", 0.03)
+    with pytest.raises(PlcCommError) as ei:
+        lk.poll()
+    assert "Holding Register 100 ~ 109" in str(ei.value)
 
 
 def test_int_to_scaled_point_is_raw_value(fake):
