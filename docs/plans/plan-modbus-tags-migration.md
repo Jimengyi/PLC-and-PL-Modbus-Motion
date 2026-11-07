@@ -17,7 +17,7 @@ Architecture: 保留 `PlcPort`，以 `TagsLink` 包住 `modbus_tags.Bus` 取代 
 
 Verification: `cd app && uv run --system-certs pytest && uv run --system-certs pytest -m slow && uv run --system-certs ruff check . && uv run --system-certs ruff format --check .`
 
-Base branch:
+Base branch: main @ 59419e5
 
 ---
 
