@@ -135,7 +135,7 @@ Related: `docs/specs/spec-modbus-tags-migration.md` — FR-6 ~ FR-14、處置表
 
 ---
 
-### Task 3: 邏輯值快照與 B 接點顯示 [ ]
+### Task 3: 邏輯值快照與 B 接點顯示 [x]
 
 Files:
 - Modify: `app/src/plc_motion/plc/snapshot.py`、`port.py`、`model.py`、`modbus_link.py`
@@ -156,19 +156,19 @@ Depends on: Task 2
 測試 seam：引擎測試透過 `ModelPort`；畫面透過 `IoMonitorPage`、`AxisPage`，e2e 走 `plc-sim`。
 
 驗收：（契約層）
-- [ ] B 接點點位在 `plc-sim` 為 1 時：IO Monitor 亮燈、名稱有 `(B)`；軸控頁燈號名稱有 `(B)`、顯示未觸發。改為 0 時：IO Monitor 不亮；軸控頁顯示觸發，對應方向 JOG 被拒。
-- [ ] 把 `Positive Limit 1` 的 `invert=true` 拿掉後可以啟動，`plc-sim` 把該點設為 1 時，軸控頁顯示正極限觸發、名稱沒有 `(B)`、正向 JOG 被拒。
-- [ ] Emergency Stop 為 B 接點且在 `plc-sim` 為 0 時，移動命令被拒絕，理由是急停；改為 A 接點時，`plc-sim` 為 1 才拒絕。
-- [ ] 測試設定新增 `invert=true` 的可寫 Coil，在 IO Monitor 雙擊：模擬器收到目前原始值的相反值，燈號跟著模擬器原始值變化。
-- [ ] 引擎既有測試不改邏輯仍全部通過。
-- [ ] Run: `uv run --system-certs pytest tests/plc tests/engine tests/ui tests/e2e/test_e2e_points_io.py -q` → 全綠
+- [x] B 接點點位在 `plc-sim` 為 1 時：IO Monitor 亮燈、名稱有 `(B)`；軸控頁燈號名稱有 `(B)`、顯示未觸發。改為 0 時：IO Monitor 不亮；軸控頁顯示觸發，對應方向 JOG 被拒。
+- [x] 把 `Positive Limit 1` 的 `invert=true` 拿掉後可以啟動，`plc-sim` 把該點設為 1 時，軸控頁顯示正極限觸發、名稱沒有 `(B)`、正向 JOG 被拒。
+- [x] Emergency Stop 為 B 接點且在 `plc-sim` 為 0 時，移動命令被拒絕，理由是急停；改為 A 接點時，`plc-sim` 為 1 才拒絕。
+- [x] 測試設定新增 `invert=true` 的可寫 Coil，在 IO Monitor 雙擊：模擬器收到目前原始值的相反值，燈號跟著模擬器原始值變化。
+- [x] 引擎既有測試不改邏輯仍全部通過。
+- [x] Run: `uv run --system-certs pytest tests/plc tests/engine tests/ui tests/e2e/test_e2e_points_io.py -q` → 全綠
 
 禁區：
 - 不動 `engine/` 的判斷邏輯，也不在引擎出現依 B 接點判斷的寫法。
 
 ---
 
-### Task 4: plc-sim 故障注入 [ ]
+### Task 4: plc-sim 故障注入 [x]
 
 Files:
 - Modify: `app/src/plc_motion/sim/server.py`
@@ -186,9 +186,9 @@ Depends on: Task 2
 測試 seam：`SimServer` 搭配 pymodbus client 走 TCP。
 
 驗收：（契約層）
-- [ ] 設延遲後，client 量到的回應時間增加；解除後回到原水準。
-- [ ] 拒絕 `Speed 1` 寫入時，client 收到例外碼 4，讀取 `Speed 1` 與寫其他點正常。
-- [ ] Run: `uv run --system-certs pytest tests/sim/test_server.py -q` → 全綠
+- [x] 設延遲後，client 量到的回應時間增加；解除後回到原水準。
+- [x] 拒絕 `Speed 1` 寫入時，client 收到例外碼 4，讀取 `Speed 1` 與寫其他點正常。
+- [x] Run: `uv run --system-certs pytest tests/sim/test_server.py -q` → 全綠
 
 禁區：
 - 例外碼不可用 1：函式庫遇到它會改用 FC16 重試。
