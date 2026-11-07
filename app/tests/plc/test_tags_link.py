@@ -269,6 +269,15 @@ def test_close_sends_queued_writes_before_disconnecting(link, server):
     assert last_write < disconnect
 
 
+def test_drain_timeout_is_one_request_limit_plus_interval(link, config):
+    """寫入等待上限不隨每輪請求數增加（預設 timeout 2000 ms、retries 0、interval 200 ms）。"""
+    assert link.request_count > 1
+    d = config.channel.device
+    expected = (d.timeout_ms * (d.retries + 1) + d.inter_request_delay_ms + d.interval_ms) / 1000
+    assert link.drain_timeout_s == pytest.approx(expected)
+    assert link.drain_timeout_s == pytest.approx(2.2)
+
+
 def test_close_is_repeatable(link):
     link.close()
     link.close()

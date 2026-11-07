@@ -24,7 +24,6 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 
-from lib.modbus_tags import Bus
 from plc_motion.codec import decimals_for
 from plc_motion.engine import (
     CommandRejected,
@@ -41,7 +40,7 @@ from plc_motion.engine import (
 )
 from plc_motion.plc.port import PlcCommError
 from plc_motion.plc.snapshot import Snapshot
-from plc_motion.plc.tags_link import BusFactory, TagsLink
+from plc_motion.plc.tags_link import BusFactory, TagsLink, bus_stop_timeout_s, drain_timeout_s
 from plc_motion.settings.loader import AppConfig
 
 log = logging.getLogger("plc_motion.worker")
@@ -50,21 +49,17 @@ log = logging.getLogger("plc_motion.worker")
 # 不經過它）；一次檢查只讀通道的最新結果，不送任何請求。
 POLL_CHECK_MS = 20
 
-_STOP_MARGIN_MS = 2000  # 函式庫停止通道時，在單次請求上限之外多等的時間（channel.py）
+_STOP_SLACK_S = 0.5  # 事件迴圈處理 stop 與執行緒收尾的餘裕
 
 
 def stop_timeout_ms(config: AppConfig) -> int:
     """`stop()` 到執行緒結束的最壞等待（ms）：給 `MotionApp.shutdown` 的 `thread.wait`。
 
-    最壞情況是排在 stop 前面的斷線處理：JOG 寫 0 的等待、關閉前等寫入（兩者上限皆為
-    `TagsLink.drain_timeout_s`），再加上停止通道本身。
+    `_do_stop` 先 `close()`：等已排入的寫入（上限 `drain_timeout_s`），再停止通道
+    （上限 `bus_stop_timeout_s`）。兩者都取自 tags_link 的同一份公式。
     """
-    channel = config.channel
-    d = channel.device
-    judged_ms = d.timeout_ms * (d.retries + 1) + d.inter_request_delay_ms
-    requests = Bus([channel], {}).stats(channel.name).requests  # 不連線，只規劃讀取範圍
-    drain_ms = judged_ms * (requests + 1) + d.interval_ms
-    return int(2 * drain_ms + judged_ms + _STOP_MARGIN_MS + 1000)
+    device = config.channel.device
+    return int((drain_timeout_s(device) + bus_stop_timeout_s(device) + _STOP_SLACK_S) * 1000)
 
 
 @dataclass(frozen=True)

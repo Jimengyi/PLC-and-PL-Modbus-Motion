@@ -27,7 +27,7 @@ from lib.modbus_tags import (
     WaitTimeout,
     WriteFailed,
 )
-from lib.modbus_tags.config import ChannelConfig
+from lib.modbus_tags.config import ChannelConfig, DeviceConfig
 from plc_motion.plc.port import PlcCommError, PlcPort
 from plc_motion.plc.snapshot import Snapshot
 from plc_motion.settings.io_points import IoPoint, model_name
@@ -40,6 +40,29 @@ _READ_REASON = re.compile(r"read unit (\d+) (\w+) address (\d+) count (\d+)")
 
 # 通道先把狀態設成 DISCONNECTED、之後才通知原因：poll 在這個空檔看到斷線時等原因的上限
 _REASON_WAIT_S = 0.1
+
+
+# 函式庫停止通道時，在單次請求上限之外多等的時間（channel.py 的 _STOP_MARGIN）
+BUS_STOP_MARGIN_S = 2.0
+
+
+def request_limit_s(device: DeviceConfig) -> float:
+    """單次請求從送出到判定逾時的上限（秒）。"""
+    return (device.timeout_ms * (device.retries + 1) + device.inter_request_delay_ms) / 1000
+
+
+def drain_timeout_s(device: DeviceConfig) -> float:
+    """等已排入的寫入有結果的上限（秒）：`close()` 與斷線前寫 JOG 0 共用。
+
+    寫入在進行中的請求之後送出：等那個請求（最多一次判定逾時），再加一個輪詢週期的餘裕。
+    不乘每輪請求數：讀取逾時即斷線，佇列的寫入立刻一起失敗，不會一直等下去。
+    """
+    return request_limit_s(device) + device.interval_ms / 1000
+
+
+def bus_stop_timeout_s(device: DeviceConfig) -> float:
+    """`Bus.stop()` 等通道執行緒結束的上限（秒）。"""
+    return request_limit_s(device) + BUS_STOP_MARGIN_S
 
 
 def _default_bus(channel: ChannelConfig) -> Bus:
@@ -198,15 +221,8 @@ class TagsLink(PlcPort):
 
     @property
     def drain_timeout_s(self) -> float:
-        """`close()` 等寫入的上限（秒）。
-
-        寫入在下一輪開頭送出；最壞情況是先等進行中這一輪的讀取（每個請求最多一次判定逾時，
-        逾時即斷線、佇列一起失敗），再等寫入本身，另加一個輪詢週期的餘裕。
-        """
-        d = self._channel.device
-        judged_ms = d.timeout_ms * (d.retries + 1) + d.inter_request_delay_ms
-        requests = self.request_count or 1
-        return (judged_ms * (requests + 1) + d.interval_ms) / 1000
+        """`close()` 等寫入的上限（秒），見模組函式 `drain_timeout_s`。"""
+        return drain_timeout_s(self._channel.device)
 
     # ---- 內部 ----
 

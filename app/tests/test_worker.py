@@ -4,6 +4,7 @@ PLC 端為 SimServer（真 TCP、localhost）；斷言一律經由 worker 的 si
 """
 
 import logging
+import shutil
 import socket
 import threading
 import time
@@ -26,7 +27,7 @@ from plc_motion.plc import PlcModel
 from plc_motion.plc.tags_link import TagsLink
 from plc_motion.settings import load_config
 from plc_motion.sim import SimServer
-from plc_motion.worker import EngineStatus, start_worker
+from plc_motion.worker import EngineStatus, start_worker, stop_timeout_ms
 
 WORKER_LOGGER = "plc_motion"
 
@@ -553,6 +554,27 @@ def test_stop_while_jog_held_sends_release_before_closing(qtbot, server, make_wo
     assert writes(server, "JOG Plus 1")[-1].value is False
     with server.lock:
         assert server.model.read("JOG Plus 1") is False
+
+
+DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config"
+
+
+@pytest.mark.parametrize("which", ["default", "fixture"])
+def test_stop_timeout_covers_close_drain_and_bus_stop(which, tmp_path, config_dir):
+    """`stop_timeout_ms` 不短於 TagsLink 的寫入等待上限加上停止通道的上限；預設約 6 秒。"""
+    if which == "default":
+        config_dir = tmp_path / "default"
+        shutil.copytree(DEFAULT_CONFIG, config_dir)
+    config = load_config(config_dir)
+    link = TagsLink(config, "127.0.0.1", free_port())  # 只讀上限，不連線
+    d = config.channel.device
+    request_s = (d.timeout_ms * (d.retries + 1) + d.inter_request_delay_ms) / 1000
+    bus_stop_s = request_s + 2.0  # channel.py：最長單次請求 + _STOP_MARGIN
+    timeout_ms = stop_timeout_ms(config)
+    assert timeout_ms >= (link.drain_timeout_s + bus_stop_s) * 1000
+    assert timeout_ms <= (link.drain_timeout_s + bus_stop_s + 1.0) * 1000
+    if which == "default":
+        assert 5000 <= timeout_ms <= 8000
 
 
 def test_reconnect_while_jog_held_leaves_jog_zero(qtbot, server, make_worker):
