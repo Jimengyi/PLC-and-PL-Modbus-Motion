@@ -323,11 +323,11 @@ Related: `app/src/lib/modbus_tags/datatypes.py`、`config/points.py`；`docs/spe
 
 ---
 
-### Task 8: IO Monitor 多型別 [ ]
+### Task 8: IO Monitor 多型別 [x]
 
 Files:
 - Modify: `app/src/plc_motion/ui/io_monitor.py`、`value_dialog.py`、`worker.py`（寫入日誌）、`engine/engine.py`（只放寬 `write_point` 型別註記）
-- Test: `app/tests/ui/test_io_monitor.py`、`app/tests/e2e/test_e2e_points_io.py`
+- Test: `app/tests/ui/test_io_monitor.py`、`app/tests/e2e/test_e2e_points_io.py`、`app/tests/test_worker.py`、`app/tests/e2e/conftest.py`（teardown 清理 Qt 物件）
 
 Difficulty: 複雜
 Depends on: Task 7
@@ -336,18 +336,18 @@ Related: `docs/specs/spec-modbus-tags-migration.md`、`docs/specs/spec-modbus-ma
 介面契約：（契約層）
 
 - 分頁、顯示與寫入依 spec FR-29 ~ FR-31。
-- `ValueDialog` 回傳要交給 `write_point` 的值：有 `scale` 的點回傳 `float` 工程值；必要位置點維持回傳 `int` 原始值；其餘依型別回傳 `int`、`float` 或 `str`。
+- `ValueDialog.value`（原 `raw`）回傳要交給 `write_point` 的值：有 `scale` 的點回傳 `float` 工程值；必要位置點維持回傳 `int` 原始值；其餘依型別回傳 `int`、`float` 或 `str`。
 - `lib.modbus_tags.datatypes.encode` 可用來驗證範圍。
 - Worker 的 IO 寫入日誌能記錄 `float`、`str`，寫入 `String` 不會因記錄日誌而判定斷線。
 
 測試 seam：`IoMonitorPage`、`ValueDialog`，e2e 用真 `MainWindow` 連 `plc-sim`。
 
 驗收：（契約層）
-- [ ] 測試設定新增下列非必要點，連上 `plc-sim` 後 IO Monitor 都顯示正確值，分頁符合 FR-29：`I16`、`U32`、`I32`（含 `scale`、`unit`）、`F32`、`String`、Holding Register 位元（`N.bK`）、Input Register。
-- [ ] 上述可寫點從 IO Monitor 手動寫入，`plc-sim` 收到的值正確、其他位元或相鄰位址不受影響；超出範圍或格式錯誤時，視窗顯示原因且不寫入。
-- [ ] `word_order=high_first` 的非必要 `U32` 能正確讀寫。
-- [ ] `Speed` 維持 1 ~ 100。
-- [ ] Run: `uv run --system-certs pytest tests/ui/test_io_monitor.py tests/e2e/test_e2e_points_io.py -q` → 全綠
+- [x] 測試設定新增下列非必要點，連上 `plc-sim` 後 IO Monitor 都顯示正確值，分頁符合 FR-29：`I16`、`U32`、`I32`（含 `scale`、`unit`）、`F32`、`String`、Holding Register 位元（`N.bK`）、Input Register。
+- [x] 上述可寫點從 IO Monitor 手動寫入，`plc-sim` 收到的值正確、其他位元或相鄰位址不受影響；超出範圍或格式錯誤時，視窗顯示原因且不寫入。
+- [x] `word_order=high_first` 的非必要 `U32` 能正確讀寫。
+- [x] `Speed` 維持 1 ~ 100。
+- [x] Run: `uv run --system-certs pytest tests/ui/test_io_monitor.py tests/e2e/test_e2e_points_io.py -q` → 全綠
 
 禁區：
 - 不改左右欄與整體版面。
