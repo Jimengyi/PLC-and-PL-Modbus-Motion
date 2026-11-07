@@ -21,8 +21,9 @@
     WAIT_REPLY_OFF --Reply = 0-->                                          WAIT_DONE
     WAIT_DONE      --Ready = 1 且 Busy = 0（Code 1 另需 Find Home Finish）--> FINISHED
 
-時序注意：advance 拿到的快照是本輪開頭讀的，本輪寫入的點要下一輪讀取才看得到；
-所以每一步至少隔一個輪詢週期。
+時序注意：寫入只排入通訊佇列，advance 之後拿到的快照可能仍早於這些寫入（通道正好在讀取），
+所以每一步至少隔一個輪詢週期，有時多一輪。各等待點（PLC Action Code、Reply、Busy）都要等
+PLC 反應才會變，舊快照只會讓交握多等，不會誤判前進。
 """
 
 from collections.abc import Callable
@@ -62,7 +63,7 @@ class AxisHandshake:
         self,
         axis: int,  # 軸號 1 ~ 7，用來組出點位名稱（例如 "Request 3"）
         code: int,  # CODE_HOME 或 CODE_MOVE
-        port: PlcPort,  # 寫入 PLC 的介面：正式為 ModbusLink，單元測試為 ModelPort
+        port: PlcPort,  # 寫入 PLC 的介面：正式為 TagsLink，單元測試為 ModelPort
         clock: Callable[[], float],  # 取目前時間（秒）：正式為 time.monotonic，測試可換假時鐘
         timeout_s: float,  # 每個等待點的逾時秒數（device.toml 的 handshake_timeout_s）
         target_raw: int | None = None,  # Code 2 的目標位置，已乘上倍率的整數（I32）

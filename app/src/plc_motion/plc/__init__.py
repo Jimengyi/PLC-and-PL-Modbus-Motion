@@ -3,5 +3,14 @@
 from plc_motion.plc.model import PlcModel
 from plc_motion.plc.port import ModelPort, PlcCommError, PlcPort
 from plc_motion.plc.snapshot import AxisState, Snapshot
+from plc_motion.plc.tags_link import TagsLink
 
-__all__ = ["AxisState", "ModelPort", "PlcCommError", "PlcModel", "PlcPort", "Snapshot"]
+__all__ = [
+    "AxisState",
+    "ModelPort",
+    "PlcCommError",
+    "PlcModel",
+    "PlcPort",
+    "Snapshot",
+    "TagsLink",
+]

@@ -138,3 +138,23 @@ def test_jog_release_stops_axis(ready_rig):
     rig.run(0.5)
     assert rig.axis(1).position == stopped
     assert not rig.axis(1).busy
+
+
+def test_jog_held_tag_follows_press_release_and_disconnect(ready_rig):
+    rig = ready_rig
+    assert rig.engine.jog_held_tag is None
+    rig.engine.jog_press(3, -1, speed=40)
+    assert rig.engine.jog_held_tag == "JOG Minus 3"
+    rig.engine.jog_release(3, -1)
+    assert rig.engine.jog_held_tag is None
+
+    rig.engine.jog_press(5, +1, speed=40)
+    assert rig.engine.jog_held_tag == "JOG Plus 5"
+    rig.engine.on_disconnected()
+    assert rig.engine.jog_held_tag is None
+
+
+def test_rejected_jog_press_holds_nothing(ready_rig):
+    rig = ready_rig
+    rig.engine.jog_press(9, +1, speed=40)
+    assert rig.engine.jog_held_tag is None

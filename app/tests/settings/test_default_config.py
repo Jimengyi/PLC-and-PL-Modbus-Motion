@@ -157,10 +157,9 @@ def test_positions_csv_has_200_blank_points(default_config):
 
 
 def test_default_read_ranges_cover_all_points_in_five_requests(default_config):
-    from plc_motion.plc.batching import plan_reads
+    from lib.modbus_tags import Bus
 
+    # 每個點都落在某段範圍內由載入檢查保證（default_config 載入成功）
     assert default_config.read_ranges is not None
-    blocks = plan_reads(default_config.points.all(), default_config.read_ranges)
-    assert len(blocks) == 5
-    tags = sorted(p.tag for b in blocks for p in b.points)
-    assert tags == sorted(p.tag for p in default_config.points.all())
+    channel = default_config.channel
+    assert Bus([channel], {}).stats(channel.name).requests == 5
