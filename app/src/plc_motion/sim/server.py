@@ -12,7 +12,7 @@ Position 點占兩個 Word，低位在前。
 import asyncio
 import threading
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
 from pymodbus.constants import ExcCodes
@@ -63,6 +63,10 @@ class _Store:
         units = {p.unit_id for p in sim.points.all()} | {k[0] for k in self._readable}
         self._unit_ids = sorted(units)
 
+    async def _delay(self) -> None:
+        if self._sim.delay_ms > 0:
+            await asyncio.sleep(self._sim.delay_ms / 1000)
+
     def device_ids(self) -> list[int]:
         return list(self._unit_ids)
 
@@ -87,6 +91,7 @@ class _Store:
     async def async_getValues(
         self, device_id: int, func_code: int, address: int, count: int = 1
     ) -> list[int] | list[bool] | ExcCodes:
+        await self._delay()
         model = _MODELS.get(func_code)
         cells = self._lookup(device_id, model, address, count, reading=True)
         if isinstance(cells, ExcCodes):
@@ -111,9 +116,13 @@ class _Store:
         address: int,
         values: Sequence[int] | Sequence[bool],
     ) -> ExcCodes | None:
+        await self._delay()
         cells = self._lookup(device_id, _MODELS.get(func_code), address, len(values), False)
         if isinstance(cells, ExcCodes):
             return cells
+        rejected = self._sim.rejected_writes
+        if rejected and any(c.point.tag in rejected for c in cells):
+            return ExcCodes.DEVICE_FAILURE
         if any(c.point.access != Access.READ_WRITE for c in cells):
             return ExcCodes.ILLEGAL_ADDRESS
         # 同一點的 Word 合併為一次寫入；依位址順序
@@ -182,6 +191,8 @@ class SimServer:
         self.log = SimLog()
         self.lock = threading.RLock()
         self.forced_tag: str | None = None
+        self.delay_ms = 0
+        self.rejected_writes: frozenset[str] = frozenset()
         self._connections: dict[int, str] = {}
         self._conn_lock = threading.Lock()
         self._thread: threading.Thread | None = None
@@ -229,6 +240,20 @@ class SimServer:
         if tag is not None:
             self.points.get(tag)  # 不存在的 Tag 直接 KeyError
         self.forced_tag = tag
+
+    def set_delay(self, ms: float) -> None:
+        """測試用：每個 Modbus 請求回應前延遲 ms 毫秒；0 解除。"""
+        self.delay_ms = max(0.0, ms)
+
+    def reject_writes(self, tags: Iterable[str]) -> None:
+        """測試用：只拒絕這些點的寫入（Server Device Failure），讀取照常；空集合解除。
+
+        例外碼不可用 Illegal Function：函式庫遇到它會改用 FC16 重試。
+        """
+        names = frozenset(tags)
+        for t in names:
+            self.points.get(t)  # 不存在的 Tag 直接 KeyError
+        self.rejected_writes = names
 
     # ---- 背景執行緒 ----
 

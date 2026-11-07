@@ -213,6 +213,47 @@ def test_force_exception_on_tag_and_release(server, client):
     assert not client.write_coil(servo, True, device_id=0).isError()
 
 
+# ---- 故障注入 ----
+
+DEVICE_FAILURE = 4
+
+
+def _median_read_seconds(client, address: int, n: int = 5) -> float:
+    times = []
+    for _ in range(n):
+        t0 = time.perf_counter()
+        assert not client.read_holding_registers(address, count=1, device_id=0).isError()
+        times.append(time.perf_counter() - t0)
+    return sorted(times)[n // 2]
+
+
+def test_set_delay_slows_responses_and_release_restores(server, client):
+    a = addr(server, "Speed 1")
+    base = _median_read_seconds(client, a)
+    server.set_delay(300)
+    assert _median_read_seconds(client, a, n=3) >= 0.28
+    server.set_delay(0)
+    assert _median_read_seconds(client, a) < 0.15
+    assert base < 0.15
+
+
+def test_reject_writes_only_blocks_writes_of_given_tags(server, client):
+    speed = addr(server, "Speed 1")
+    server.reject_writes({"Speed 1"})
+    rr = client.write_register(speed, 50, device_id=0)
+    assert rr.isError() and rr.exception_code == DEVICE_FAILURE
+    with server.lock:
+        assert server.model.read("Speed 1") != 50
+    # 讀取同一點與寫其他點都正常
+    assert read_point(client, server.points.get("Speed 1")) is not None
+    assert not client.write_register(addr(server, "Speed 2"), 60, device_id=0).isError()
+    # 空集合解除
+    server.reject_writes(set())
+    assert not client.write_register(speed, 50, device_id=0).isError()
+    with server.lock:
+        assert server.model.read("Speed 1") == 50
+
+
 # ---- Unit ID ----
 
 
