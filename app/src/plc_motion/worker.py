@@ -55,11 +55,14 @@ _STOP_SLACK_S = 0.5  # 事件迴圈處理 stop 與執行緒收尾的餘裕
 def stop_timeout_ms(config: AppConfig) -> int:
     """`stop()` 到執行緒結束的最壞等待（ms）：給 `MotionApp.shutdown` 的 `thread.wait`。
 
-    `_do_stop` 先 `close()`：等已排入的寫入（上限 `drain_timeout_s`），再停止通道
-    （上限 `bus_stop_timeout_s`）。兩者都取自 tags_link 的同一份公式。
+    最壞路徑是 stop 排在斷線處理之後：寫入被拒、連線仍在且 JOG 按住時先等 JOG 寫 0
+    （`_release_held_jog`，上限 `drain_timeout_s`），`close()` 再等已排入的寫入（同上限），
+    最後停止通道（上限 `bus_stop_timeout_s`）。全部取自 tags_link 的同一份公式。
     """
     device = config.channel.device
-    return int((drain_timeout_s(device) + bus_stop_timeout_s(device) + _STOP_SLACK_S) * 1000)
+    jog_release_s = drain_timeout_s(device)  # 與 _release_held_jog 的 write_wait 上限相同
+    close_s = drain_timeout_s(device) + bus_stop_timeout_s(device)
+    return int((jog_release_s + close_s + _STOP_SLACK_S) * 1000)
 
 
 @dataclass(frozen=True)

@@ -560,8 +560,8 @@ DEFAULT_CONFIG = Path(__file__).resolve().parents[1] / "config"
 
 
 @pytest.mark.parametrize("which", ["default", "fixture"])
-def test_stop_timeout_covers_close_drain_and_bus_stop(which, tmp_path, config_dir):
-    """`stop_timeout_ms` 不短於 TagsLink 的寫入等待上限加上停止通道的上限；預設約 6 秒。"""
+def test_stop_timeout_covers_jog_release_close_and_bus_stop(which, tmp_path, config_dir):
+    """`stop_timeout_ms` 不短於斷線處理的 JOG 寫 0、close 等寫入與停止通道三段上限；預設約 9 秒。"""
     if which == "default":
         config_dir = tmp_path / "default"
         shutil.copytree(DEFAULT_CONFIG, config_dir)
@@ -570,11 +570,13 @@ def test_stop_timeout_covers_close_drain_and_bus_stop(which, tmp_path, config_di
     d = config.channel.device
     request_s = (d.timeout_ms * (d.retries + 1) + d.inter_request_delay_ms) / 1000
     bus_stop_s = request_s + 2.0  # channel.py：最長單次請求 + _STOP_MARGIN
+    jog_release_s = link.drain_timeout_s  # _release_held_jog 的 write_wait 上限
+    worst_s = jog_release_s + link.drain_timeout_s + bus_stop_s
     timeout_ms = stop_timeout_ms(config)
-    assert timeout_ms >= (link.drain_timeout_s + bus_stop_s) * 1000
-    assert timeout_ms <= (link.drain_timeout_s + bus_stop_s + 1.0) * 1000
+    assert timeout_ms >= worst_s * 1000
+    assert timeout_ms <= (worst_s + 1.0) * 1000
     if which == "default":
-        assert 5000 <= timeout_ms <= 8000
+        assert 8000 <= timeout_ms <= 10000
 
 
 def test_reconnect_while_jog_held_leaves_jog_zero(qtbot, server, make_worker):
