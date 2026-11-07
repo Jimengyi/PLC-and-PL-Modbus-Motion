@@ -634,3 +634,54 @@ def test_listener_receives_state_changes(model):
     assert ("Servo Motor 1", True) in events
     assert ("Ready 1", True) in events
     assert ("Ready 2", True) not in events  # 只送有變化的點
+
+
+# ---- 多型別的非必要點（spec FR-33） ----
+
+
+def _extra(tag, address, length, model, data_type, access, attributes=""):
+    return {
+        "Tag Name": tag,
+        "Display Name": "",
+        "Start Address": address,
+        "Address Length": str(length),
+        "Unit ID": "0",
+        "Data Model": model,
+        "Data Type": data_type,
+        "Access": access,
+        "Visible": "O",
+        "Description": "",
+        "Attributes": attributes,
+        "Check Status": "Unchecked",
+    }
+
+
+@pytest.fixture
+def multi_model(config_dir, io_rows, write_io_points) -> PlcModel:
+    hr = "Holding Register"
+    io_rows += [
+        _extra("Aux F32", "300", 2, hr, "F32", "Read Write"),
+        _extra("Aux String", "302", 2, hr, "String", "Read Write"),
+        _extra("Aux U32", "304", 2, hr, "U32", "Read Write"),
+        _extra("Lamp", "310.b0", 1, hr, "Bool", "Read Write"),
+        _extra("Door Closed", "310.b1", 1, hr, "Bool", "Read Only", "invert=true"),
+    ]
+    write_io_points(config_dir, io_rows)
+    return PlcModel(load_config(config_dir).points)
+
+
+def test_initial_raw_values_by_data_type(multi_model):
+    assert multi_model.read("Aux F32") == 0.0
+    assert multi_model.read("Aux String") == ""
+    assert multi_model.read("Aux U32") == 0
+    assert multi_model.read("Lamp") is False
+    assert multi_model.read("Door Closed") is True  # B 接點未觸發為 1
+
+
+def test_master_write_keeps_float_and_text_values(multi_model):
+    multi_model.master_write("Aux F32", 1.25)
+    multi_model.master_write("Aux String", "AB")
+    multi_model.master_write("Aux U32", 4_000_000_000)
+    assert multi_model.read("Aux F32") == 1.25
+    assert multi_model.read("Aux String") == "AB"
+    assert multi_model.read("Aux U32") == 4_000_000_000
