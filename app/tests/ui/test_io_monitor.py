@@ -480,3 +480,231 @@ def test_motion_app_mounts_io_monitor_and_writes_to_plc(qtbot, motion):
         lambda: cell(page, "Servo Motor 3", VALUE_COL).foreground().color() == color("ok"),
         timeout=5000,
     )
+
+
+# ---- 多型別（spec FR-29 ~ FR-31） ----
+
+
+def _row(tag, address, length, model, data_type, access, attributes=""):
+    return {
+        "Tag Name": tag,
+        "Display Name": "",
+        "Start Address": str(address),
+        "Address Length": str(length),
+        "Unit ID": "0",
+        "Data Model": model,
+        "Data Type": data_type,
+        "Access": access,
+        "Visible": "O",
+        "Description": "",
+        "Attributes": attributes,
+        "Check Status": "Unchecked",
+    }
+
+
+_HR, _IR = "Holding Register", "Input Register"
+MULTI_ROWS = [
+    _row("Aux U16", 300, 1, _HR, "U16", "Read Write"),
+    _row("Aux I16", 301, 1, _HR, "I16", "Read Write"),
+    _row("Aux U32", 302, 2, _HR, "U32", "Read Write"),
+    _row("Aux U32 HF", 304, 2, _HR, "U32", "Read Write", "word_order=high_first"),
+    _row("Aux I32", 306, 2, _HR, "I32", "Read Write", "scale=100;unit=mm"),
+    _row("Aux F32", 308, 2, _HR, "F32", "Read Write", "byte_swap=true"),
+    _row("Aux String", 310, 4, _HR, "String", "Read Write"),
+    _row("Aux I16 Frac", 314, 1, _HR, "I16", "Read Write", "scale=2.5;unit=V"),
+    _row("Aux F32 Scaled", 316, 2, _HR, "F32", "Read Write", "scale=10;unit=kPa"),
+    _row("Lamp A", "320.b0", 1, _HR, "Bool", "Read Write"),
+    _row("Door Closed", "320.b9", 1, _HR, "Bool", "Read Only", "invert=true"),
+    _row("IR U16", 0, 1, _IR, "U16", "Read Only"),
+    _row("IR Bit", "1.b3", 1, _IR, "Bool", "Read Only"),
+    _row("IR F32", 2, 2, _IR, "F32", "Read Only"),
+]
+
+
+@pytest.fixture
+def multi_config(config_dir, io_rows, write_io_points):
+    write_io_points(config_dir, io_rows + MULTI_ROWS)
+    return load_config(config_dir)
+
+
+@pytest.fixture
+def multi_page(qtbot, multi_config, fake_worker):
+    return make_page(qtbot, multi_config, fake_worker)
+
+
+def multi_snapshot(config, raws: dict | None = None):
+    """在 PlcModel 初始值上套用 `raws`（tag → PLC 原始值）後讀出快照。"""
+    model = PlcModel(config.points)
+    for tag, raw in (raws or {}).items():
+        model.master_write(tag, raw)
+    return ModelPort(model).read_all()
+
+
+def test_multi_type_tabs_bool_digital_others_numeric(multi_page):
+    page = multi_page
+    assert "Lamp A" in tags_in(page, "digital", RW)
+    for tag in ("Door Closed", "IR Bit"):
+        assert tag in tags_in(page, "digital", RO)
+    for tag in ("Aux I16", "Aux U32", "Aux U32 HF", "Aux I32", "Aux F32", "Aux String"):
+        assert tag in tags_in(page, "numeric", RW)
+    for tag in ("IR U16", "IR F32"):
+        assert tag in tags_in(page, "numeric", RO)
+
+
+def test_numeric_tab_text_covers_holding_and_input_register(multi_page):
+    text = multi_page.kind_buttons["numeric"].text()
+    assert "Holding" in text and "Input" in text
+
+
+VALUE_TAGS = (
+    "Aux I16",
+    "Aux U32",
+    "Aux U32 HF",
+    "Aux I32",
+    "Aux F32",
+    "Aux String",
+    "Aux I16 Frac",
+    "Aux F32 Scaled",
+    "IR U16",
+    "IR F32",
+)
+
+
+def test_multi_type_values_displayed(multi_page, multi_config, fake_worker):
+    raws = {
+        "Aux I16": -5,
+        "Aux U32": 70000,
+        "Aux U32 HF": 4294967295,
+        "Aux I32": -1234,  # 原始值；scale=100 → -12.34 mm
+        "Aux F32": 1.5,
+        "Aux String": "HELLO",
+        "Aux I16 Frac": 5,  # 5 / 2.5 = 2.0 V
+        "Aux F32 Scaled": 25.0,  # 25 / 10 = 2.5 kPa
+        "Lamp A": True,
+        "IR U16": 7,
+        "IR Bit": True,
+        "IR F32": 2.25,
+    }
+    enable(fake_worker, multi_snapshot(multi_config, raws))
+    texts = {tag: cell(multi_page, tag, VALUE_COL).text() for tag in VALUE_TAGS}
+    assert texts == {
+        "Aux I16": "-5",
+        "Aux U32": "70000",
+        "Aux U32 HF": "4294967295",
+        "Aux I32": "-12.34 mm",
+        "Aux F32": "1.5000",
+        "Aux String": "HELLO",
+        "Aux I16 Frac": "2.0 V",
+        "Aux F32 Scaled": "2.5000 kPa",
+        "IR U16": "7",
+        "IR F32": "2.2500",
+    }
+    assert cell(multi_page, "Lamp A", VALUE_COL).text().endswith("ON")
+    assert cell(multi_page, "IR Bit", VALUE_COL).text().endswith("ON")
+    # B 接點：原始值 1（初始未觸發）燈號亮
+    assert cell(multi_page, "Door Closed", VALUE_COL).text().endswith("ON")
+
+
+def test_decimals_do_not_jump_between_refreshes(multi_page, multi_config, fake_worker):
+    def texts():
+        return tuple(cell(multi_page, t, VALUE_COL).text() for t in ("Aux F32", "Aux I16 Frac"))
+
+    enable(fake_worker, multi_snapshot(multi_config, {"Aux F32": 1.0, "Aux I16 Frac": 1}))
+    assert texts() == ("1.0000", "0.4 V")
+    enable(fake_worker, multi_snapshot(multi_config, {"Aux F32": 1.25, "Aux I16 Frac": 4}))
+    assert texts() == ("1.2500", "1.6 V")
+
+
+@pytest.mark.parametrize(
+    ("tag", "text", "value"),
+    [
+        ("Aux U16", "65535", 65535),
+        ("Aux I16", "-32768", -32768),
+        ("Aux I16", "32767", 32767),
+        ("Aux U32", "4294967295", 4294967295),
+        ("Aux U32 HF", "70000", 70000),
+        ("Aux I32", "12.34", 12.34),  # 有 scale：工程值 float
+        ("Aux I32", "-5", -5.0),
+        ("Aux F32", "1.5", 1.5),
+        ("Aux F32", "3", 3.0),
+        ("Aux F32 Scaled", "2.5", 2.5),
+        ("Aux I16 Frac", "2", 2.0),
+        ("Aux String", "HELLO", "HELLO"),
+        ("Aux String", "ABCDEFGH", "ABCDEFGH"),
+        ("Aux String", "", ""),
+    ],
+)
+def test_multi_type_dialog_writes_typed_value(
+    qtbot, multi_page, multi_config, fake_worker, tag, text, value
+):
+    enable(fake_worker, multi_snapshot(multi_config))
+    seen: dict = {}
+    answer_value_dialog(text, seen)
+    double_click(qtbot, multi_page, tag)
+    assert "error" not in seen
+    assert fake_worker.calls == [("write_point", tag, value)]
+    assert type(fake_worker.calls[0][2]) is type(value)
+
+
+@pytest.mark.parametrize(
+    ("tag", "text"),
+    [
+        ("Aux I16", "32768"),
+        ("Aux I16", "-32769"),
+        ("Aux I16", "1.5"),
+        ("Aux U32", "-1"),
+        ("Aux U32", "4294967296"),
+        ("Aux I32", "21474837"),  # × 100 超出 I32
+        ("Aux I32", "abc"),
+        ("Aux I32", "inf"),
+        ("Aux F32", "1e39"),  # 超出單精度
+        ("Aux F32", "nan"),
+        ("Aux F32", ""),
+        ("Aux I16 Frac", "81920"),  # × 2.5 超出 I16
+        ("Aux String", "ABCDEFGHI"),  # 4 個暫存器最多 8 字元
+        ("Aux String", "中文"),
+    ],
+)
+def test_multi_type_dialog_rejects_invalid(qtbot, multi_page, multi_config, fake_worker, tag, text):
+    enable(fake_worker, multi_snapshot(multi_config))
+    seen: dict = {}
+    answer_value_dialog(text, seen)
+    double_click(qtbot, multi_page, tag)
+    assert seen.get("error")
+    assert fake_worker.calls == []
+
+
+def test_register_bit_double_click_toggles(qtbot, multi_page, multi_config, fake_worker):
+    enable(fake_worker, multi_snapshot(multi_config, {"Lamp A": True}))
+    double_click(qtbot, multi_page, "Lamp A")
+    assert fake_worker.calls == [("write_point", "Lamp A", False)]
+
+
+def test_input_register_double_click_does_nothing(qtbot, multi_page, multi_config, fake_worker):
+    enable(fake_worker, multi_snapshot(multi_config))
+    double_click(qtbot, multi_page, "IR U16")
+    double_click(qtbot, multi_page, "IR Bit")
+    assert fake_worker.calls == []
+
+
+def test_dialog_shows_range_and_current_for_types(qtbot, multi_config):
+    points = multi_config.points
+
+    def dialog_for(tag, current):
+        dialog = ValueDialog(points.get(tag), current)
+        qtbot.addWidget(dialog)
+        return dialog
+
+    dialog = dialog_for("Aux I16", -5)
+    assert "-32768 ~ 32767" in dialog.info_label.text()
+    assert dialog.value_edit.text() == "-5"
+    dialog = dialog_for("Aux U32", 1)
+    assert "0 ~ 4294967295" in dialog.info_label.text()
+    dialog = dialog_for("Aux String", "AB")
+    assert "8 個 ASCII 字元" in dialog.info_label.text()
+    assert dialog.value_edit.text() == "AB"
+    dialog = dialog_for("Aux I32", -12.34)
+    assert "-12.34 mm" in dialog.info_label.text()
+    assert dialog.value_edit.text() == "-12.34"
+    dialog = dialog_for("Aux F32", 1.5)
+    assert dialog.value_edit.text() == "1.5"  # F32 以 7 位有效數字編輯

@@ -24,6 +24,7 @@ from dataclasses import dataclass
 
 from PySide6.QtCore import QObject, Qt, QThread, QTimer, Signal, Slot
 
+from lib.modbus_tags import ReadOnlyTag, ValueOutOfRange
 from plc_motion.codec import decimals_for
 from plc_motion.engine import (
     CommandRejected,
@@ -300,9 +301,15 @@ class PlcWorker(QObject):
         self._engine.jog_release(axis, direction)
         log.info("JOG 放開：第 %s 軸 %s", axis, _dir_text(direction))
 
-    def _do_write_point(self, tag: str, value: int | bool) -> None:
-        if not self._engine.write_point(tag, value):
-            log.info("IO 寫入：%s = %s", tag, int(value))
+    def _do_write_point(self, tag: str, value: int | float | bool | str) -> None:
+        try:
+            rejected = self._engine.write_point(tag, value)
+        except (ValueOutOfRange, TypeError, ReadOnlyTag) as e:
+            # 範圍或型別錯誤不是通訊失敗：不寫入、維持連線
+            log.error("IO 寫入失敗：%s = %s：%s", tag, _value_text(value), e)
+            return
+        if not rejected:
+            log.info("IO 寫入：%s = %s", tag, _value_text(value))
 
     def _do_clear_residual(self) -> None:
         if not self._connected:
@@ -393,6 +400,15 @@ class PlcWorker(QObject):
 
 def _dir_text(direction: int) -> str:
     return "+" if direction > 0 else "-"
+
+
+def _value_text(value: int | float | bool | str) -> str:
+    """IO 寫入日誌的值：Bool 記 1／0，String 加引號（看得出空字串與前後空白）。"""
+    if isinstance(value, bool):
+        return str(int(value))
+    if isinstance(value, str):
+        return repr(value)
+    return str(value)
 
 
 def start_worker(

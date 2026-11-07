@@ -461,6 +461,21 @@ def test_io_write_is_logged(qtbot, server, make_worker, caplog_info):
     assert "IO 寫入：Speed 3 = 40" in log_text(caplog_info)
 
 
+def test_io_write_out_of_range_is_logged_without_disconnect(
+    qtbot, server, make_worker, caplog_info
+):
+    """範圍錯誤不是通訊失敗：記錄原因、不寫入、維持連線。"""
+    _, worker, probe = make_worker(server=server)
+    wait_connected(qtbot, probe)
+    until(qtbot, lambda: probe.snapshots, timeout=3000)
+    worker.write_point("Speed 3", 70000)  # 超出 U16
+    until(qtbot, lambda: "IO 寫入失敗：Speed 3 = 70000" in log_text(caplog_info), timeout=3000)
+    count = len(probe.snapshots)
+    until(qtbot, lambda: len(probe.snapshots) > count + 2, timeout=3000)
+    assert probe.connection == [True]
+    assert writes(server, "Speed 3") == []
+
+
 def test_events_are_written_to_daily_log_file(qtbot, tmp_path, server, make_worker):
     logs_dir = tmp_path / "logs"
     setup_logging(logs_dir, keep_days=30)
