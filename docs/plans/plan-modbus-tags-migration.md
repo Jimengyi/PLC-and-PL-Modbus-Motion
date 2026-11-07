@@ -87,7 +87,7 @@ Related: `C:\Users\jimze\Desktop\Project\AI Project\Python Library\modbus-tags\s
 
 ---
 
-### Task 2: 設定結構與點位表 [ ]
+### Task 2: 設定結構與點位表 [x]
 
 Files:
 - Create: `app/config/app.toml`
@@ -95,7 +95,7 @@ Files:
 - Create: `app/config/modbus/Channel01/io_points.csv`
 - Create: `app/config/modbus/Channel01/read_ranges.toml`
 - Delete: `app/config/device.toml`、`app/config/io_points.csv`、`app/config/read_ranges.toml`
-- Modify: `app/src/plc_motion/settings/io_points.py`、`device.py`、`loader.py`、`__init__.py`
+- Modify: `app/src/plc_motion/settings/io_points.py`、`device.py`、`loader.py`、`__init__.py`（`device.py` 新增 `load_app`、`build_device`）
 - Delete: `app/src/plc_motion/settings/read_ranges.py`、`app/tests/settings/test_read_ranges.py`
 - Modify: `app/src/plc_motion/plc/batching.py`、`modbus_link.py`、`model.py`、`snapshot.py`、`sim/server.py`、`sim/main.py`、`app.py`、`engine/engine.py`（只改 `Access` 匯入）、`ui/io_monitor.py`、`ui/value_dialog.py`（機械式改名，行為不變）
 - Modify: `app/tests/conftest.py`、`app/tests/e2e/conftest.py` 與 `tests/` 內引用舊欄位或舊路徑的測試
@@ -118,13 +118,13 @@ Related: `docs/specs/spec-modbus-tags-migration.md` — FR-6 ~ FR-14、處置表
 測試 seam：檢查規則以 `load_config(config_dir)` 與 `ConfigErrors.errors` 驗；錯誤視窗與結束碼在進入點實際啟動驗（`tests/test_app_entry.py`）；Check Status 從 `IoMonitorPage` 操作，重新載入後比對檔案位元組。
 
 驗收：（契約層）
-- [ ] repo 的預設設定可啟動，連上 `plc-sim`；所有必要 Tag 的位址、Unit ID、Data Model、倍率、單位與轉換前相同。
-- [ ] 分別製造 spec FR-11 的每一種錯誤（每次一種），程式顯示列出該錯誤的視窗後結束，結束碼非 0。
-- [ ] 同層兩種錯誤同時列出；第一層與第二層同時有錯時先列第一層，排除後才出現第二層；`connection.type = "rtu"` 加上某列 Data Model 打錯時兩者都列出。
-- [ ] `byte_swap=false`、`invert=false` 用在必要 Tag 不算錯誤；`word_order=high_first` 用在 `Current Position 1` 報錯。
-- [ ] 在 IO Monitor 設定 Check Status 後重新啟動，狀態保留；比對檔案只有該欄改變。
-- [ ] `plc-motion --host --port` 實際連上 `plc-sim`，設定檔內容不變。
-- [ ] Run: `uv run --system-certs pytest tests/settings tests/plc tests/sim tests/engine tests/ui tests/test_worker.py tests/test_app_entry.py tests/e2e -q`（超過 120 秒，要加長 timeout）→ 全綠
+- [x] repo 的預設設定可啟動，連上 `plc-sim`；所有必要 Tag 的位址、Unit ID、Data Model、倍率、單位與轉換前相同。
+- [x] 分別製造 spec FR-11 的每一種錯誤（每次一種），程式顯示列出該錯誤的視窗後結束，結束碼非 0。
+- [x] 同層兩種錯誤同時列出；第一層與第二層同時有錯時先列第一層，排除後才出現第二層；`connection.type = "rtu"` 加上某列 Data Model 打錯時兩者都列出。
+- [x] `byte_swap=false`、`invert=false` 用在必要 Tag 不算錯誤；`word_order=high_first` 用在 `Current Position 1` 報錯。
+- [x] 在 IO Monitor 設定 Check Status 後重新啟動，狀態保留；比對檔案只有該欄改變。
+- [x] `plc-motion --host --port` 實際連上 `plc-sim`，設定檔內容不變。
+- [x] Run: `uv run --system-certs pytest tests/settings tests/plc tests/sim tests/engine tests/ui tests/test_worker.py tests/test_app_entry.py tests/e2e -q`（超過 120 秒，要加長 timeout）→ 全綠
 
 禁區：
 - 不動 `engine/engine.py`、`engine/handshake.py` 的邏輯。
