@@ -243,14 +243,14 @@ Related: `app/src/lib/modbus_tags/bus.py`、`channel.py`、`model.py`；`docs/de
 
 ---
 
-### Task 6: Worker 改用 TagsLink [ ]
+### Task 6: Worker 改用 TagsLink [x]
 
 Files:
 - Modify: `app/src/plc_motion/worker.py`、`app.py`
 - Modify: `app/src/plc_motion/engine/engine.py`、`handshake.py`（只改時序敘述，並新增 JOG 查詢屬性）
 - Delete: `app/src/plc_motion/plc/modbus_link.py`、`batching.py`、`app/tests/plc/test_modbus_link.py`、`test_batching.py`
 - Modify: `app/src/plc_motion/plc/__init__.py`
-- Test: `app/tests/test_worker.py`、`app/tests/e2e/`
+- Test: `app/tests/test_worker.py`、`app/tests/e2e/`、`app/tests/settings/test_default_config.py`（原本匯入被刪的 `batching`）
 
 Difficulty: 複雜
 Depends on: Task 5
@@ -268,21 +268,21 @@ Related: `docs/design/design-modbus-tags-migration.md` 的「執行流程」「�
 測試 seam：`PlcWorker` 的 signal；e2e 用真 `MainWindow`／`PlcWorker` 走 TCP 連 `SimServer`，看模擬器寫入紀錄、畫面與日誌。
 
 驗收：（契約層）
-- [ ] `interval_ms = 1000` 時按住再放開 JOG，模擬器在放開後 100 ms 內記錄 JOG = 0；預設週期下也一樣。
-- [ ] 按住 JOG 時結束程式，模擬器紀錄最終該 JOG 點為 0；按住 JOG 時按重新連線，也一樣。
-- [ ] Code 2 多軸移動，每軸的寫入順序是 `Target Position`、`Speed`、`PC Action Code`、`Request`，寫入 PLC 的 I32 與 PC 端換算值完全相同。
-- [ ] `plc-sim` 加上通訊延遲，使快照晚於寫入時，移動與原點復歸都正確完成，不提前結束也不逾時。
-- [ ] PLC 值連續數輪不變時，交握逾時仍會在設定時間後觸發。
-- [ ] 主規格中與移動、原點復歸、Reset Alarm、殘留交握、JOG 殘留有關的驗收條件全部維持通過（對應既有測試：`tests/engine`、`tests/e2e/test_e2e_motion.py`、`tests/e2e/test_e2e_connection.py`）。
-- [ ] 啟動時連不上，主視窗照常開啟並顯示未連線；`plc-sim` 啟動後不會自動連上，按重新連線才連上。
-- [ ] 連線中 `plc-sim` 中斷所有連線，畫面顯示未連線，操作以「通訊中斷」結束，之後不會自動重連。`device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時也一樣，且下次手動連線仍執行殘留交握與 JOG 殘留檢查。
-- [ ] `plc-sim` 拒絕 `Speed` 寫入時按住 JOG：模擬器紀錄最終該 JOG 點為 0，畫面顯示未連線與「軸可能仍在移動，請按急停」，日誌含該 Tag Name 與位址。
-- [ ] `plc-sim` 拒絕 `Speed` 與 JOG 點的寫入時按住 JOG：畫面顯示未連線與同樣提示，日誌記錄寫 0 失敗。
-- [ ] Code 2 移動中 `plc-sim` 拒絕 `Target Position`：模擬器沒有收到該軸的 `Request = 1`，操作以「通訊中斷」結束。
-- [ ] 寫入失敗後重新連線，斷線前排隊的寫入在重新連線之後不會送出；殘留交握與 JOG 殘留的處理同主規格。
-- [ ] 通訊品質畫面的讀取耗時、週期、請求數與連線後第一輪無週期值，都符合 spec FR-18。
-- [ ] 以可注入建立 Bus 的方式製造「快照已更新且同時有寫入失敗」：引擎沒有收到 tick，判定為通訊中斷。
-- [ ] Run: `uv run --system-certs pytest tests/test_worker.py tests/e2e tests/engine tests/ui -q`（超過 120 秒，要加長 timeout）→ 全綠
+- [x] `interval_ms = 1000` 時按住再放開 JOG，模擬器在放開後 100 ms 內記錄 JOG = 0；預設週期下也一樣。
+- [x] 按住 JOG 時結束程式，模擬器紀錄最終該 JOG 點為 0；按住 JOG 時按重新連線，也一樣。
+- [x] Code 2 多軸移動，每軸的寫入順序是 `Target Position`、`Speed`、`PC Action Code`、`Request`，寫入 PLC 的 I32 與 PC 端換算值完全相同。
+- [x] `plc-sim` 加上通訊延遲，使快照晚於寫入時，移動與原點復歸都正確完成，不提前結束也不逾時。
+- [x] PLC 值連續數輪不變時，交握逾時仍會在設定時間後觸發。
+- [x] 主規格中與移動、原點復歸、Reset Alarm、殘留交握、JOG 殘留有關的驗收條件全部維持通過（對應既有測試：`tests/engine`、`tests/e2e/test_e2e_motion.py`、`tests/e2e/test_e2e_connection.py`）。
+- [x] 啟動時連不上，主視窗照常開啟並顯示未連線；`plc-sim` 啟動後不會自動連上，按重新連線才連上。
+- [x] 連線中 `plc-sim` 中斷所有連線，畫面顯示未連線，操作以「通訊中斷」結束，之後不會自動重連。`device.toml` 設 `auto_reconnect = true` 且 `reconnect_interval_ms` 極短時也一樣，且下次手動連線仍執行殘留交握與 JOG 殘留檢查。
+- [x] `plc-sim` 拒絕 `Speed` 寫入時按住 JOG：模擬器紀錄最終該 JOG 點為 0，畫面顯示未連線與「軸可能仍在移動，請按急停」，日誌含該 Tag Name 與位址。
+- [x] `plc-sim` 拒絕 `Speed` 與 JOG 點的寫入時按住 JOG：畫面顯示未連線與同樣提示，日誌記錄寫 0 失敗。
+- [x] Code 2 移動中 `plc-sim` 拒絕 `Target Position`：模擬器沒有收到該軸的 `Request = 1`，操作以「通訊中斷」結束。
+- [x] 寫入失敗後重新連線，斷線前排隊的寫入在重新連線之後不會送出；殘留交握與 JOG 殘留的處理同主規格。
+- [x] 通訊品質畫面的讀取耗時、週期、請求數與連線後第一輪無週期值，都符合 spec FR-18。
+- [x] 以可注入建立 Bus 的方式製造「快照已更新且同時有寫入失敗」：引擎沒有收到 tick，判定為通訊中斷。
+- [x] Run: `uv run --system-certs pytest tests/test_worker.py tests/e2e tests/engine tests/ui -q`（超過 120 秒，要加長 timeout）→ 全綠
 
 禁區：
 - 不改引擎和交握的判斷邏輯。
