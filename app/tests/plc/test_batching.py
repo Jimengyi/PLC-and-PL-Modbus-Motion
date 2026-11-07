@@ -1,26 +1,15 @@
 """批次讀取分組（純函式）：合併連續位址、不跨空隙、不切開 Position 點。"""
 
+from lib.modbus_tags import Access, DataModel
 from plc_motion.plc.batching import plan_reads
 from plc_motion.settings import load_config
-from plc_motion.settings.io_points import (
-    Access,
-    CheckStatus,
-    DataModel,
-    IoPoint,
-    SensorType,
-)
+from plc_motion.settings.io_points import CheckStatus, IoPoint, model_name
 
 _COIL, _DI, _HR = DataModel.COIL, DataModel.DISCRETE_INPUT, DataModel.HOLDING_REGISTER
 
 
 def pt(tag: str, address: int, model: DataModel = _HR, length: int = 1, unit_id: int = 0):
-    sensor = (
-        SensorType.POSITION
-        if length == 2
-        else SensorType.U16
-        if model == _HR
-        else SensorType.BOOLEAN
-    )
+    data_type = "I32" if length == 2 else "U16" if model == _HR else "Bool"
     return IoPoint(
         tag=tag,
         display_name="",
@@ -28,11 +17,10 @@ def pt(tag: str, address: int, model: DataModel = _HR, length: int = 1, unit_id:
         length=length,
         unit_id=unit_id,
         data_model=model,
-        sensor_type=sensor,
+        data_type=data_type,
         access=Access.READ_ONLY,
         visible=True,
         description="",
-        attributes="10000,mm" if length == 2 else "",
         check_status=CheckStatus.UNCHECKED,
         line=0,
         scale=10000 if length == 2 else None,
@@ -42,7 +30,8 @@ def pt(tag: str, address: int, model: DataModel = _HR, length: int = 1, unit_id:
 
 def spans(blocks) -> list[tuple[int, str, int, int, list[str]]]:
     return [
-        (b.unit_id, b.data_model.value, b.start, b.count, [p.tag for p in b.points]) for b in blocks
+        (b.unit_id, model_name(b.data_model), b.start, b.count, [p.tag for p in b.points])
+        for b in blocks
     ]
 
 
@@ -116,10 +105,10 @@ def test_default_config_covers_every_point_once_and_no_undefined_address(config_
 
 
 def test_ranges_make_one_block_per_range_including_gaps():
-    from plc_motion.settings.read_ranges import ReadRange
+    from lib.modbus_tags.config import ReadRange
 
     points = [pt("a", 20, _COIL), pt("b", 24, _COIL), pt("pos", 22, _HR, length=2), pt("c", 20)]
-    ranges = [ReadRange(0, _HR, 20, 30), ReadRange(0, _COIL, 20, 24), ReadRange(0, _DI, 5, 9)]
+    ranges = [ReadRange(0, _HR, 20, 11), ReadRange(0, _COIL, 20, 5), ReadRange(0, _DI, 5, 5)]
     assert spans(plan_reads(points, ranges)) == [
         (0, "Holding Register", 20, 11, ["c", "pos"]),
         (0, "Coil", 20, 5, ["a", "b"]),

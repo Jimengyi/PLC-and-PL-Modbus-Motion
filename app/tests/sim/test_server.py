@@ -7,10 +7,11 @@ from pathlib import Path
 import pytest
 from pymodbus.client import ModbusTcpClient
 
+from lib.modbus_tags import DataModel
 from plc_motion.codec import join_i32
 from plc_motion.plc import PlcModel
 from plc_motion.settings import load_config
-from plc_motion.settings.io_points import DataModel, SensorType
+from plc_motion.settings.io_points import is_position
 from plc_motion.sim import SimServer
 
 ILLEGAL_ADDRESS = 2
@@ -60,7 +61,7 @@ def read_point(c: ModbusTcpClient, point, device_id: int = 0):
     rr = c.read_holding_registers(point.start_address, count=point.length, device_id=device_id)
     if rr.isError():
         return None
-    if point.sensor_type == SensorType.POSITION:
+    if is_position(point):
         return join_i32(rr.registers[0], rr.registers[1])
     return rr.registers[0]
 
@@ -229,7 +230,7 @@ def test_points_are_separated_by_unit_id(tmp_path, config_dir, io_rows, write_io
             "Address Length": "1",
             "Unit ID": "2",
             "Data Model": "Coil",
-            "Sensor Type": "Boolean",
+            "Data Type": "Bool",
             "Access": "Read Write",
             "Visible": "O",
             "Description": "",

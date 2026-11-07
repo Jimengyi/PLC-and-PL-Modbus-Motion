@@ -30,8 +30,10 @@ ADDRESS_RULES = [
     ("JOG Plus", 123, 10),
     ("JOG Minus", 124, 10),
 ]
-SCALES = {1: "10000,mm", 2: "10000,mm", 3: "10000,mm", 4: "100,deg", 5: "100,deg", 6: "100,deg"}
-SCALES[7] = "100,mm"
+SCALES = {1: (10000, "mm"), 2: (10000, "mm"), 3: (10000, "mm")}
+SCALES |= {4: (100, "deg"), 5: (100, "deg"), 6: (100, "deg"), 7: (100, "mm")}
+# 轉換前 Attributes 為 ON（B 接點）的點：轉成 invert=true
+B_CONTACT = {"Positive Limit", "Negative Limit"}
 
 
 @pytest.fixture(scope="module")
@@ -59,13 +61,29 @@ def test_all_required_tags_present_with_addresses_from_address_table(default_con
             )
     estop = points.get("Emergency Stop")
     assert estop.start_address == 24576
-    assert estop.is_b_contact
+    assert estop.invert
+
+
+def test_required_tags_data_model_type_and_contact(default_config):
+    from lib.modbus_tags import DataModel
+    from plc_motion.settings.io_points import required_tag_types
+
+    for tag, spec in required_tag_types().items():
+        p = default_config.points.get(tag)
+        assert (p.data_model, p.data_type, p.access, p.length) == spec[:4], tag
+        base = tag.rsplit(" ", 1)[0]
+        assert p.invert == (base in B_CONTACT or tag == "Emergency Stop"), tag
+        assert (p.word_order, p.byte_swap, p.bit) == (None, False, None), tag
+        if p.data_model == DataModel.DISCRETE_INPUT:
+            assert p.data_type == "Bool"
 
 
 def test_position_scales_per_axis(default_config):
     for axis, attr in SCALES.items():
         for name in ("Current Position", "Target Position"):
-            assert default_config.points.axis_tag(name, axis).attributes == attr
+            p = default_config.points.axis_tag(name, axis)
+            assert (p.scale, p.unit) == attr
+            assert type(p.scale) is int
 
 
 def test_visible_unit_id_and_check_status(default_config):
@@ -77,20 +95,43 @@ def test_visible_unit_id_and_check_status(default_config):
         assert p.visible == (base_name not in hidden), p.tag
 
 
+CHANNEL = DEFAULT_CONFIG / "modbus" / "Channel01"
+
+
+def test_config_folder_structure():
+    """spec FR-6：app.toml、axes.toml 在 config；通道檔案在 modbus/Channel01。"""
+    assert (DEFAULT_CONFIG / "app.toml").is_file()
+    assert (DEFAULT_CONFIG / "axes.toml").is_file()
+    assert sorted(p.name for p in (DEFAULT_CONFIG / "modbus").iterdir()) == ["Channel01"]
+    for name in ("device.toml", "io_points.csv", "read_ranges.toml"):
+        assert (CHANNEL / name).is_file(), name
+    for name in ("device.toml", "io_points.csv", "read_ranges.toml"):
+        assert not (DEFAULT_CONFIG / name).exists(), name
+
+
 def test_device_toml_values():
-    d = tomllib.loads((DEFAULT_CONFIG / "device.toml").read_text(encoding="utf-8"))
-    assert d["connection"] == {"host": "192.168.1.105", "port": 502, "timeout_ms": 2000}
-    assert d["polling"] == {"interval_ms": 200}
-    assert d["handshake"] == {"timeout_s": 5, "reset_alarm_pulse_ms": 500}
-    assert d["log"] == {"retention_days": 30}
-    assert "ui" not in d  # 介面只有深色，不再有主題設定
+    """spec FR-8：TCP，連線目標與輪詢週期同舊版預設；逾時 2000 ms、不重試、不自動重連。"""
+    d = tomllib.loads((CHANNEL / "device.toml").read_text(encoding="utf-8"))
+    assert d["device"]["enabled"] is True
+    assert d["connection"] == {"type": "tcp", "tcp": {"host": "192.168.1.105", "port": 502}}
+    assert d["protocol"] == {"timeout_ms": 2000, "retries": 0}
+    assert d["polling"] == {"interval_ms": 200, "auto_reconnect": False}
 
 
-def test_device_toml_every_key_has_comment_above():
-    lines = (DEFAULT_CONFIG / "device.toml").read_text(encoding="utf-8").splitlines()
+def test_app_toml_values():
+    d = tomllib.loads((DEFAULT_CONFIG / "app.toml").read_text(encoding="utf-8"))
+    assert d == {
+        "handshake": {"timeout_s": 5, "reset_alarm_pulse_ms": 500},
+        "log": {"retention_days": 30},
+    }
+
+
+@pytest.mark.parametrize("path", [CHANNEL / "device.toml", DEFAULT_CONFIG / "app.toml"])
+def test_toml_every_key_has_comment_above(path):
+    lines = path.read_text(encoding="utf-8").splitlines()
     for i, line in enumerate(lines):
         if "=" in line and not line.lstrip().startswith("#"):
-            assert lines[i - 1].lstrip().startswith("#"), f"第 {i + 1} 列缺註解：{line}"
+            assert lines[i - 1].lstrip().startswith("#"), f"{path.name} 第 {i + 1} 列缺註解：{line}"
 
 
 def test_axes_names_and_pending_comment(default_config):

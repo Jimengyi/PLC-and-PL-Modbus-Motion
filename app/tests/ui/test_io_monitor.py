@@ -5,10 +5,11 @@ from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QApplication
 from ui_support import status
 
+from lib.modbus_tags import Access
 from plc_motion.app import MotionApp
 from plc_motion.plc import ModelPort, PlcModel
 from plc_motion.settings import load_config
-from plc_motion.settings.io_points import Access, CheckStatus, load_io_points
+from plc_motion.settings.io_points import CheckStatus
 from plc_motion.sim import SimServer
 from plc_motion.ui.io_monitor import DESC_COL, NAME_COL, STRIPE_COL, VALUE_COL, IoMonitorPage
 from plc_motion.ui.theme import color
@@ -88,9 +89,7 @@ def answer_value_dialog(text: str, seen: dict) -> None:
 
 
 def saved_status(config, tag) -> CheckStatus:
-    table, errors = load_io_points(config.points.path)
-    assert errors == []
-    return table.get(tag).check_status
+    return load_config(config.config_dir).points.get(tag).check_status
 
 
 # ---- 版面與顯示 ----
@@ -368,7 +367,7 @@ def test_custom_tags_in_correct_column(qtbot, config_dir, io_rows, write_io_poin
             "Display Name": "",
             "Start Address": "500",
             "Data Model": "Coil",
-            "Sensor Type": "Boolean",
+            "Data Type": "Bool",
             "Access": "Read Write",
             "Description": "Y20",
         },
@@ -378,7 +377,7 @@ def test_custom_tags_in_correct_column(qtbot, config_dir, io_rows, write_io_poin
             "Display Name": "門檢",
             "Start Address": "30000",
             "Data Model": "Discrete Input",
-            "Sensor Type": "Boolean",
+            "Data Type": "Bool",
             "Access": "Read Only",
         },
         {
@@ -387,7 +386,7 @@ def test_custom_tags_in_correct_column(qtbot, config_dir, io_rows, write_io_poin
             "Display Name": "計數",
             "Start Address": "600",
             "Data Model": "Holding Register",
-            "Sensor Type": "U16",
+            "Data Type": "U16",
             "Access": "Read Write",
         },
     ]

@@ -13,9 +13,10 @@ import pytest
 from PySide6.QtGui import QContextMenuEvent
 from PySide6.QtWidgets import QApplication, QFileDialog, QMenu, QMessageBox
 
+from lib.modbus_tags import Access
 from plc_motion.engine import ResultKind
 from plc_motion.settings.csvio import BOM
-from plc_motion.settings.io_points import Access, CheckStatus
+from plc_motion.settings.io_points import CheckStatus
 from plc_motion.ui.io_monitor import NAME_COL, STRIPE_COL
 from plc_motion.ui.theme import color
 from plc_motion.ui.value_dialog import ValueDialog
@@ -94,7 +95,7 @@ def right_click_set_status(e2e, tag: str, status: CheckStatus) -> None:
 
 
 def test_ac3_big5_io_points_shows_chinese_and_check_status_writes_utf8_bom(request, e2e_config_dir):
-    path = e2e_config_dir / "io_points.csv"
+    path = e2e_config_dir / "modbus" / "Channel01" / "io_points.csv"
     original = path.read_bytes().decode("utf-8-sig")
     path.write_bytes(original.encode("cp950"))  # Big5（含中文 Display Name）
     with pytest.raises(UnicodeDecodeError):
@@ -116,8 +117,8 @@ def test_ac3_big5_io_points_shows_chinese_and_check_status_writes_utf8_bom(reque
     assert data.startswith(BOM)  # UTF-8 含 BOM：Excel 預設開啟即以 UTF-8 解讀
     text = data[len(BOM) :].decode("utf-8")
     expected = original.replace(
-        "Servo Motor 1,X 軸伺服啟動,122,1,0,Coil,Boolean,Read Write,O,_M122,,Unchecked",
-        "Servo Motor 1,X 軸伺服啟動,122,1,0,Coil,Boolean,Read Write,O,_M122,,OK",
+        "Servo Motor 1,X 軸伺服啟動,122,1,0,Coil,Bool,Read Write,O,_M122,,Unchecked",
+        "Servo Motor 1,X 軸伺服啟動,122,1,0,Coil,Bool,Read Write,O,_M122,,OK",
     )
     assert expected != original
     assert text == expected  # 中文與其餘列逐字不變，只改該列 Check Status
@@ -140,7 +141,7 @@ def test_ac4_missing_positions_csv_is_created_with_200_points(request, e2e_confi
 
 
 def test_ac5_extra_tag_appears_in_io_monitor_and_writes_sim(request, e2e_config_dir):
-    path = e2e_config_dir / "io_points.csv"
+    path = e2e_config_dir / "modbus" / "Channel01" / "io_points.csv"
     records = read_csv(path)
     records.append(
         [
@@ -150,7 +151,7 @@ def test_ac5_extra_tag_appears_in_io_monitor_and_writes_sim(request, e2e_config_
             "1",
             "0",
             "Coil",
-            "Boolean",
+            "Bool",
             "Read Write",
             "O",
             "_M300",
@@ -160,7 +161,7 @@ def test_ac5_extra_tag_appears_in_io_monitor_and_writes_sim(request, e2e_config_
     )
     write_csv(path, records)
     # 新增的點也要加進讀取範圍（FR-61），否則啟動檢查不通過
-    ranges = e2e_config_dir / "read_ranges.toml"
+    ranges = e2e_config_dir / "modbus" / "Channel01" / "read_ranges.toml"
     text = ranges.read_text(encoding="utf-8")
     ranges.write_text(text.replace('"20~84, 120~184"', '"20~84, 120~184, 300"'), encoding="utf-8")
 

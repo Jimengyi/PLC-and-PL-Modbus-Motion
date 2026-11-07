@@ -1,21 +1,23 @@
-"""device.toml：連線、輪詢、交握與日誌設定。
+"""app.toml（交握與日誌）與 `DeviceSettings`（連線、輪詢、交握、日誌設定的合併結果）。
 
-檔案格式：
+app.toml 格式：
 
-    [connection]  host、port、timeout_ms（必要）
-    [polling]     interval_ms（預設 200）
     [handshake]   timeout_s（預設 5）、reset_alarm_pulse_ms（預設 500）
     [log]         retention_days（預設 30）
 
-舊版的 [ui] theme 已不使用（介面只有深色），檔案裡留著也不影響載入。
+連線與輪詢設定在通道的 `modbus/Channel01/device.toml`（modbus_tags 格式），由函式庫載入；
+`build_device` 把兩者合併成引擎與 Worker 使用的 `DeviceSettings`。
+app.toml 的其他段落（例如舊版的 [ui] theme）不使用，留著也不影響載入。
 """
 
 import tomllib
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-FILE_NAME = "device.toml"
+from lib.modbus_tags.config import DeviceConfig
+
+FILE_NAME = "app.toml"
 
 
 @dataclass
@@ -27,30 +29,28 @@ class DeviceSettings:
     handshake_timeout_s: float = 5
     reset_alarm_pulse_ms: int = 500
     log_retention_days: int = 30
-    path: Path | None = field(default=None, repr=False)
+
+
+@dataclass(frozen=True)
+class AppSettings:
+    handshake_timeout_s: float = 5
+    reset_alarm_pulse_ms: int = 500
+    log_retention_days: int = 30
 
 
 def _is_int(v: Any) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
-def _is_number(v: Any) -> bool:
-    return isinstance(v, (int, float)) and not isinstance(v, bool)
-
-
-def _is_host(v: Any) -> bool:
-    return isinstance(v, str) and bool(v.strip())
-
-
-def _is_port(v: Any) -> bool:
-    return _is_int(v) and 1 <= v <= 65535
+def _is_positive_int(v: Any) -> bool:
+    return _is_int(v) and v > 0
 
 
 def _is_positive_number(v: Any) -> bool:
-    return _is_number(v) and v > 0
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0
 
 
-def parse_device(data: dict[str, Any], path: Path) -> tuple[DeviceSettings | None, list[str]]:
+def parse_app(data: dict[str, Any]) -> tuple[AppSettings | None, list[str]]:
     errors: list[str] = []
 
     def table(name: str) -> dict[str, Any]:
@@ -60,15 +60,11 @@ def parse_device(data: dict[str, Any], path: Path) -> tuple[DeviceSettings | Non
             return {}
         return t
 
-    conn = table("connection")
-    polling = table("polling")
     handshake = table("handshake")
     log = table("log")
 
     def get(t: dict[str, Any], section: str, key: str, default: Any, check, rule: str):
         if key not in t:
-            if default is None:
-                errors.append(f"{FILE_NAME}：缺少 [{section}] {key}")
             return default
         v = t[key]
         if not check(v):
@@ -76,37 +72,34 @@ def parse_device(data: dict[str, Any], path: Path) -> tuple[DeviceSettings | Non
             return default
         return v
 
-    pos_int, pos_int_rule = (lambda v: _is_int(v) and v > 0), "須為正整數"
-    host = get(conn, "connection", "host", None, _is_host, "須為非空字串")
-    port = get(conn, "connection", "port", None, _is_port, "須為 1 ~ 65535 的整數")
-    timeout_ms = get(conn, "connection", "timeout_ms", None, pos_int, pos_int_rule)
-    interval = get(polling, "polling", "interval_ms", 200, pos_int, pos_int_rule)
+    pos_int, pos_int_rule = _is_positive_int, "須為正整數"
     hs_timeout = get(handshake, "handshake", "timeout_s", 5, _is_positive_number, "須為正數")
     pulse = get(handshake, "handshake", "reset_alarm_pulse_ms", 500, pos_int, pos_int_rule)
     retention = get(log, "log", "retention_days", 30, pos_int, pos_int_rule)
-
     if errors:
         return None, errors
-    return (
-        DeviceSettings(
-            host=host,
-            port=port,
-            connect_timeout_ms=timeout_ms,
-            poll_interval_ms=interval,
-            handshake_timeout_s=hs_timeout,
-            reset_alarm_pulse_ms=pulse,
-            log_retention_days=retention,
-            path=path,
-        ),
-        [],
-    )
+    return AppSettings(hs_timeout, pulse, retention), []
 
 
-def load_device(path: Path) -> tuple[DeviceSettings | None, list[str]]:
+def load_app(path: Path) -> tuple[AppSettings | None, list[str]]:
     data = load_toml(path)
     if isinstance(data, list):
         return None, data
-    return parse_device(data, path)
+    return parse_app(data)
+
+
+def build_device(app: AppSettings, device: DeviceConfig) -> DeviceSettings:
+    """通道 device.toml（已由函式庫檢查為 TCP）＋ app.toml → `DeviceSettings`。"""
+    assert device.tcp_host is not None
+    return DeviceSettings(
+        host=device.tcp_host,
+        port=device.tcp_port,
+        connect_timeout_ms=device.timeout_ms,
+        poll_interval_ms=device.interval_ms,
+        handshake_timeout_s=app.handshake_timeout_s,
+        reset_alarm_pulse_ms=app.reset_alarm_pulse_ms,
+        log_retention_days=app.log_retention_days,
+    )
 
 
 def load_toml(path: Path) -> dict[str, Any] | list[str]:

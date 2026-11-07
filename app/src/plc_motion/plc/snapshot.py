@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from types import MappingProxyType
 
 from plc_motion.codec import from_raw
-from plc_motion.settings.io_points import EMERGENCY_STOP, IoPoint, IoPointTable, SensorType
+from plc_motion.settings.io_points import EMERGENCY_STOP, IoPoint, IoPointTable, is_position
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class AxisState:
 
 def is_triggered(point: IoPoint, raw: bool) -> bool:
     """依接點型式判讀輸入點是否觸發：B 接點讀到 0 為觸發，A 接點讀到 1 為觸發。"""
-    return not raw if point.is_b_contact else bool(raw)
+    return not raw if point.invert else bool(raw)
 
 
 class Snapshot:
@@ -44,7 +44,7 @@ class Snapshot:
         """Position 點以倍率換算為實際值，其餘點同 raw。"""
         raw = self._values[tag]
         point = self._points.get(tag)
-        if point.sensor_type == SensorType.POSITION:
+        if is_position(point):
             return from_raw(raw, point.scale)
         return raw
 

@@ -30,8 +30,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from lib.modbus_tags import Access, DataModel
 from plc_motion.plc.snapshot import Snapshot
-from plc_motion.settings.io_points import Access, CheckStatus, DataModel, IoPoint, SensorType
+from plc_motion.settings.io_points import CheckStatus, IoPoint, is_position
 from plc_motion.settings.loader import AppConfig
 from plc_motion.ui.jog_pad import format_value, lock_tooltip, segment_button
 from plc_motion.ui.row_hover import enable_row_hover
@@ -61,7 +62,7 @@ def kind_of(point: IoPoint) -> str:
 
 
 def row_name(point: IoPoint) -> str:
-    return f"{point.label}(B)" if point.is_b_contact else point.label
+    return f"{point.label}(B)" if point.invert else point.label
 
 
 def plc_location(point: IoPoint) -> str:
@@ -235,11 +236,11 @@ class IoMonitorPage(QWidget):
             item.setText(_PLACEHOLDER)
             item.setForeground(QBrush())
             return
-        if point.sensor_type == SensorType.BOOLEAN:
+        if point.data_type == "Bool":
             on = bool(self._snapshot.raw(point.tag))
             item.setText(_LAMP_ON if on else _LAMP_OFF)
             item.setForeground(QBrush(color("ok" if on else "text_dim")))
-        elif point.sensor_type == SensorType.POSITION:
+        elif is_position(point):
             item.setText(format_value(self._snapshot.value(point.tag), point.scale, point.unit))
         else:
             item.setText(str(self._snapshot.raw(point.tag)))
@@ -260,7 +261,7 @@ class IoMonitorPage(QWidget):
         if not self._can_write():
             return
         point = self._points.get(self.tag_at(table, row))
-        if point.sensor_type == SensorType.BOOLEAN:
+        if point.data_type == "Bool":
             self._worker.write_point(point.tag, not bool(self._snapshot.raw(point.tag)))
             return
         dialog = ValueDialog(point, self._snapshot.value(point.tag), self)

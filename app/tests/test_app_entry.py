@@ -109,12 +109,12 @@ def no_running_instance():
 
 
 def break_config(config_dir: Path) -> list[str]:
-    """製造兩種錯誤：device.toml 缺 host、axes.toml 無法解析。回傳辨識用字串。"""
-    device = config_dir / "device.toml"
+    """製造兩種第一層錯誤：通道 device.toml 缺 host、axes.toml 無法解析。回傳辨識用字串。"""
+    device = config_dir / "modbus" / "Channel01" / "device.toml"
     text = device.read_bytes().decode("utf-8").replace('host = "192.168.1.105"\n', "")
     device.write_bytes(text.encode("utf-8"))
     (config_dir / "axes.toml").write_bytes(b"[[axes]\nnumber = = 1\n")
-    return ["缺少 [connection] host", "axes.toml"]
+    return ["connection.tcp.host", "axes.toml"]
 
 
 def log_path(config_dir: Path) -> Path:
@@ -199,14 +199,14 @@ def test_host_and_port_override_without_touching_device_toml(config_dir, process
     server = SimServer(PlcModel(points), points, port=0)
     server.start()
     try:
-        before = (config_dir / "device.toml").read_bytes()
+        before = (config_dir / "modbus" / "Channel01" / "device.toml").read_bytes()
         proc = launch(
             "--config", str(config_dir), "--host", "127.0.0.1", "--port", str(server.port)
         )
         processes.append(proc)
         wait_for(lambda: any(e.kind == "connect" for e in server.log.entries()))
         wait_for(lambda: server.log.read_count() > 0)
-        assert (config_dir / "device.toml").read_bytes() == before
+        assert (config_dir / "modbus" / "Channel01" / "device.toml").read_bytes() == before
         assert [e for e in server.log.entries() if e.kind == "write"] == []  # 啟動不寫任何點
     finally:
         server.stop()

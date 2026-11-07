@@ -24,7 +24,7 @@ WORKER_LOGGER = "plc_motion"
 
 
 def set_poll_interval(config_dir: Path, interval_ms: int) -> None:
-    path = config_dir / "device.toml"
+    path = config_dir / "modbus" / "Channel01" / "device.toml"
     text = path.read_bytes().decode("utf-8")
     path.write_bytes(text.replace("interval_ms = 200", f"interval_ms = {interval_ms}").encode())
 
@@ -212,10 +212,10 @@ def test_auto_connect_once_on_start_without_retry(qtbot, config_dir, make_worker
 
 
 def test_host_port_override_is_not_written_back(qtbot, config_dir, server, make_worker):
-    before = (config_dir / "device.toml").read_bytes()
+    before = (config_dir / "modbus" / "Channel01" / "device.toml").read_bytes()
     _, worker, probe = make_worker(host="127.0.0.1", server=server)
     wait_connected(qtbot, probe)
-    assert (config_dir / "device.toml").read_bytes() == before
+    assert (config_dir / "modbus" / "Channel01" / "device.toml").read_bytes() == before
     assert load_config(config_dir).device.host == "192.168.1.105"
 
 

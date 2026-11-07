@@ -21,16 +21,11 @@ from pymodbus.server import ModbusTcpServer
 from pymodbus.server.requesthandler import ServerRequestHandler
 from pymodbus.simulator import DataType, SimData, SimDevice
 
+from lib.modbus_tags import Access, DataModel
+from lib.modbus_tags.config import ReadRange
 from plc_motion.codec import from_raw, join_i32, split_i32
 from plc_motion.plc.model import PlcModel
-from plc_motion.settings.io_points import (
-    Access,
-    DataModel,
-    IoPoint,
-    IoPointTable,
-    SensorType,
-)
-from plc_motion.settings.read_ranges import ReadRange
+from plc_motion.settings.io_points import IoPoint, IoPointTable, is_position
 from plc_motion.sim.sim_log import SimLog
 
 # model.step() 的掃描週期（秒）
@@ -63,7 +58,7 @@ class _Store:
         # read_ranges.toml 範圍內的位址：io_points 沒定義也可以讀（讀到 0）
         self._readable: set[tuple[int, DataModel, int]] = set()
         for r in sim.read_ranges or ():
-            for a in range(r.start, r.end + 1):
+            for a in range(r.start, r.start + r.count):
                 self._readable.add((r.unit_id, r.data_model, a))
         units = {p.unit_id for p in sim.points.all()} | {k[0] for k in self._readable}
         self._unit_ids = sorted(units)
@@ -103,7 +98,7 @@ class _Store:
         if cell is None:  # 讀取範圍內的空號位址
             return 0 if model == DataModel.HOLDING_REGISTER else False
         raw = self._sim.model.read(cell.point.tag)
-        if cell.point.sensor_type == SensorType.POSITION:
+        if is_position(cell.point):
             return split_i32(int(raw))[cell.word]
         if cell.point.data_model in (DataModel.COIL, DataModel.DISCRETE_INPUT):
             return bool(raw)
@@ -129,7 +124,7 @@ class _Store:
         with sim.lock:
             for tag, parts in words.items():
                 point = sim.points.get(tag)
-                if point.sensor_type == SensorType.POSITION:
+                if is_position(point):
                     low, high = split_i32(int(sim.model.read(tag)))
                     value = join_i32(int(parts.get(0, low)), int(parts.get(1, high)))
                     text = f"（{from_raw(value, point.scale)} {point.unit}）"

@@ -14,12 +14,13 @@ from pymodbus.client import ModbusTcpClient
 from pymodbus.exceptions import ModbusException
 from pymodbus.pdu import ModbusPDU
 
+from lib.modbus_tags import DataModel
+from lib.modbus_tags.config import ReadRange
 from plc_motion.codec import join_i32, split_i32
 from plc_motion.plc.batching import ReadBlock, plan_reads
 from plc_motion.plc.port import PlcCommError, PlcPort
 from plc_motion.plc.snapshot import Snapshot
-from plc_motion.settings.io_points import DataModel, IoPointTable, SensorType
-from plc_motion.settings.read_ranges import ReadRange
+from plc_motion.settings.io_points import IoPointTable, is_position, model_name
 
 
 class ModbusLink(PlcPort):
@@ -84,13 +85,15 @@ class ModbusLink(PlcPort):
         c, dev = self._client, p.unit_id
         if p.data_model == DataModel.COIL:
             call = lambda: c.write_coil(p.start_address, bool(value), device_id=dev)  # noqa: E731
-        elif p.data_model == DataModel.HOLDING_REGISTER and p.sensor_type == SensorType.POSITION:
+        elif p.data_model == DataModel.HOLDING_REGISTER and is_position(p):
             words = list(split_i32(int(value)))
             call = lambda: c.write_registers(p.start_address, words, device_id=dev)  # noqa: E731
         elif p.data_model == DataModel.HOLDING_REGISTER:
             call = lambda: c.write_register(p.start_address, int(value), device_id=dev)  # noqa: E731
         else:
-            raise PlcCommError(f"{p.data_model} 無法寫入", tag=tag, address=p.start_address)
+            raise PlcCommError(
+                f"{model_name(p.data_model)} 無法寫入", tag=tag, address=p.start_address
+            )
         rr = self._request(call, p.tag, p.start_address)
         if rr.isError():
             raise PlcCommError(_exception_text(rr), tag=tag, address=p.start_address)
@@ -129,7 +132,7 @@ class ModbusLink(PlcPort):
             if single.isError():
                 raise PlcCommError(_exception_text(single), tag=p.tag, address=p.start_address)
         raise PlcCommError(
-            f"{_exception_text(rr)}（批次讀取 {block.data_model} "
+            f"{_exception_text(rr)}（批次讀取 {model_name(block.data_model)} "
             f"{block.start} ~ {block.start + block.count - 1}）",
             address=block.start,
         )
@@ -140,7 +143,7 @@ def _decode(block: ReadBlock, rr: ModbusPDU) -> dict[str, int | bool]:
     for p in block.points:
         i = p.start_address - block.start
         if block.data_model == DataModel.HOLDING_REGISTER:
-            if p.sensor_type == SensorType.POSITION:
+            if is_position(p):
                 out[p.tag] = join_i32(rr.registers[i], rr.registers[i + 1])
             else:
                 out[p.tag] = rr.registers[i]

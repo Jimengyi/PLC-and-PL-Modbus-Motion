@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from types import MappingProxyType
 
+from lib.modbus_tags import Access
 from plc_motion.codec import decimals_for, to_raw
 from plc_motion.engine.events import (
     AxisResult,
@@ -39,7 +40,6 @@ from plc_motion.engine.events import (
 from plc_motion.engine.handshake import CODE_HOME, CODE_MOVE, AxisHandshake
 from plc_motion.plc.port import PlcPort
 from plc_motion.plc.snapshot import AxisState, Snapshot
-from plc_motion.settings.io_points import Access
 from plc_motion.settings.loader import AppConfig
 
 LIFT_AXIS = 7  # 原點復歸時先做的軸（FR-23）

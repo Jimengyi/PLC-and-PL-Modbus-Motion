@@ -246,7 +246,9 @@ discrete_input = "24576~24612"
 
 @pytest.fixture
 def ranged_server(config_dir: Path):
-    (config_dir / "read_ranges.toml").write_bytes(RANGES_TOML.encode("utf-8"))
+    (config_dir / "modbus" / "Channel01" / "read_ranges.toml").write_bytes(
+        RANGES_TOML.encode("utf-8")
+    )
     config = load_config(config_dir)
     srv = SimServer(PlcModel(config.points), config.points, port=0, read_ranges=config.read_ranges)
     srv.start()
@@ -340,7 +342,7 @@ def test_range_rejected_by_plc_reports_batch_span(ranged_server, server):
 
 def test_range_without_points_is_still_read(config_dir):
     text = RANGES_TOML.replace('"24576~24612"', '"24576~24612, 30000~30009"')
-    (config_dir / "read_ranges.toml").write_bytes(text.encode("utf-8"))
+    (config_dir / "modbus" / "Channel01" / "read_ranges.toml").write_bytes(text.encode("utf-8"))
     config = load_config(config_dir)
     srv = SimServer(PlcModel(config.points), config.points, port=0, read_ranges=config.read_ranges)
     srv.start()

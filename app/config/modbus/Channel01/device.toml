@@ -1,0 +1,29 @@
+# PLC 通道設定（modbus_tags 格式）
+
+[device]
+# 畫面與日誌顯示的名稱
+display_name = "PLC"
+# 本程式只使用這個通道，必須為 true
+enabled = true
+
+[connection]
+# 連線方式：本程式只支援 "tcp"
+type = "tcp"
+
+[connection.tcp]
+# PLC 的 IP 位址
+host = "192.168.1.105"
+# Modbus TCP 埠號
+port = 502
+
+[protocol]
+# 單筆請求逾時（毫秒）
+timeout_ms = 2000
+# 請求失敗不重試：失敗即判定通訊中斷
+retries = 0
+
+[polling]
+# 輪詢週期（毫秒）
+interval_ms = 200
+# 斷線後不自動重連：一律由操作員按重新連線
+auto_reconnect = false

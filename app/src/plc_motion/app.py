@@ -101,7 +101,7 @@ def _port(text: str) -> int:
 
 def parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="plc-motion", description=APP_TITLE)
-    parser.add_argument("--host", help="PLC IP（暫時覆蓋 device.toml，不寫回）")
+    parser.add_argument("--host", help="PLC IP（暫時覆蓋 modbus/Channel01/device.toml，不寫回）")
     parser.add_argument("--port", type=_port, help="Modbus TCP 埠號（暫時覆蓋 device.toml）")
     parser.add_argument("--config", help="設定資料夾（預設為程式旁的 config）")
     return parser.parse_args(argv)

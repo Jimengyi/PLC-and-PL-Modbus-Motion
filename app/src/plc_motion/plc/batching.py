@@ -12,8 +12,13 @@ Illegal Data Address）。一塊的長度不超過 Modbus 單筆讀取上限，�
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from plc_motion.settings.io_points import DataModel, IoPoint
-from plc_motion.settings.read_ranges import MAX_BITS, MAX_REGISTERS, ReadRange
+from lib.modbus_tags import DataModel
+from lib.modbus_tags.config import MAX_READ_BITS, MAX_READ_REGISTERS, ReadRange
+from plc_motion.settings.io_points import IoPoint
+
+# Modbus 單筆讀取上限：FC 1/2 為 2000 個 bit，FC 3 為 125 個 Word
+MAX_BITS = MAX_READ_BITS
+MAX_REGISTERS = MAX_READ_REGISTERS
 
 __all__ = ["MAX_BITS", "MAX_REGISTERS", "ReadBlock", "plan_reads"]
 
@@ -67,7 +72,9 @@ def _from_ranges(points: list[IoPoint], ranges: Iterable[ReadRange]) -> list[Rea
             (
                 p
                 for p in points
-                if (p.unit_id, p.data_model) == (r.unit_id, r.data_model) and r.contains(p)
+                if (p.unit_id, p.data_model) == (r.unit_id, r.data_model)
+                and r.start <= p.start_address
+                and p.end_address < r.start + r.count
             ),
             key=lambda p: p.start_address,
         )

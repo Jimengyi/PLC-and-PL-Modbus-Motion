@@ -18,7 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 from plc_motion.codec import I32_MAX, I32_MIN, decimals_for, to_raw
-from plc_motion.settings.io_points import AXIS_COUNT, IoPoint, SensorType
+from plc_motion.settings.io_points import AXIS_COUNT, IoPoint, is_position
 from plc_motion.ui.jog_pad import SPEED_MAX, SPEED_MIN, format_value
 
 U16_MIN, U16_MAX = 0, 65535
@@ -33,7 +33,7 @@ def integer_range(point: IoPoint) -> tuple[int, int]:
 
 
 def range_text(point: IoPoint) -> str:
-    if point.sensor_type == SensorType.POSITION:
+    if is_position(point):
         lo = format_value(I32_MIN / point.scale, point.scale)
         hi = format_value(I32_MAX / point.scale, point.scale)
         return f"{lo} ~ {hi} {point.unit}"
@@ -44,7 +44,7 @@ def range_text(point: IoPoint) -> str:
 def parse_input(point: IoPoint, text: str) -> int:
     """輸入文字 → 要寫入的 raw；不合法時 raise ValueError（訊息給使用者看）。"""
     text = text.strip()
-    if point.sensor_type == SensorType.POSITION:
+    if is_position(point):
         try:
             value = float(text)
         except ValueError:
@@ -68,7 +68,7 @@ def parse_input(point: IoPoint, text: str) -> int:
 def current_text(point: IoPoint, current: float | int | None) -> str:
     if current is None:
         return "—"
-    if point.sensor_type == SensorType.POSITION:
+    if is_position(point):
         return format_value(current, point.scale, point.unit)
     return str(current)
 
@@ -90,7 +90,7 @@ class ValueDialog(QDialog):
         )
         self.value_edit = QLineEdit()
         if current is not None:
-            if point.sensor_type == SensorType.POSITION:
+            if is_position(point):
                 self.value_edit.setText(f"{current:.{decimals_for(point.scale)}f}")
             else:
                 self.value_edit.setText(str(current))
