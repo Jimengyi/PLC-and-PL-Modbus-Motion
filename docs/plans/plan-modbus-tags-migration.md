@@ -52,7 +52,7 @@ Base branch: main @ 59419e5
 
 ## Tasks
 
-### Task 1: 相依、匯入路徑與副本 0.7.0 [ ]
+### Task 1: 相依、匯入路徑與副本 0.7.0 [x]
 
 Files:
 - Modify: `app/pyproject.toml`
@@ -70,17 +70,17 @@ Related: `C:\Users\jimze\Desktop\Project\AI Project\Python Library\modbus-tags\s
 - 應用程式以 `lib.modbus_tags` 匯入：`[tool.uv.build-backend] module-name = ["plc_motion", "lib.modbus_tags"]`。
 - 相依改為 `pymodbus[serial]>=3.16.2,<3.17`。
 - `app/pyproject.toml` 設定 ruff format 排除 `*.md`，與基底相同：ruff 會格式化 Markdown 內的程式碼區塊，而副本不可手改。
-- `app/src/lib/` 要納入版控。
+- `app/src/lib/` 已在版控內，只更新內容。
 - 副本內容與基底 0.7.0 的 `src/modbus_tags/` 相同。
 
 測試 seam：`tests/test_smoke.py`，加上既有 `tests/sim` 對真實 TCP 的測試。
 
 驗收：（契約層）
-- [ ] `from lib.modbus_tags import open, __version__` 成功，版本為 0.7.0。
-- [ ] 副本與基底 `src/modbus_tags/` 原始檔比對無差異（不含 `__pycache__`）。
-- [ ] `SimServer` 在新版 pymodbus 下，既有 sim 測試維持通過。
-- [ ] `uv run --system-certs ruff check .` 與 `ruff format --check .` 通過。
-- [ ] Run: `uv run --system-certs pytest tests/test_smoke.py tests/sim -q` → 全綠
+- [x] `from lib.modbus_tags import open, __version__` 成功，版本為 0.7.0。
+- [x] 副本與基底 `src/modbus_tags/` 原始檔比對無差異（不含 `__pycache__`）。
+- [x] `SimServer` 在新版 pymodbus 下，既有 sim 測試維持通過。
+- [x] `uv run --system-certs ruff check .` 與 `ruff format --check .` 通過。
+- [x] Run: `uv run --system-certs pytest tests/test_smoke.py tests/sim -q` → 全綠
 
 禁區：
 - 不手改副本內的檔案。
