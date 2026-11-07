@@ -66,6 +66,8 @@ def main() -> None:
     licenses.mkdir(exist_ok=True)
     for dist_name, filename in BUNDLED_LICENSES:
         _copy_license(dist_name, licenses / filename)
+    # pyserial 的發行套件不含 LICENSE 檔，全文放在 packaging/ 直接複製
+    shutil.copyfile(PACKAGING_DIR / "pyserial-LICENSE.txt", licenses / "pyserial-LICENSE.txt")
     shutil.copyfile(Path(sys.base_prefix) / "LICENSE.txt", licenses / "Python-LICENSE.txt")
     # Qt 的 LGPL v3 第 4 節要求隨附 LGPL v3 與其引用的 GPL v3 全文
     for name in ("LGPL-3.0.txt", "GPL-3.0.txt"):

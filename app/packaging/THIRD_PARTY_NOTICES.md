@@ -17,6 +17,17 @@ plc-motion 打包版（`plc-motion.exe` 與 `_internal/`）內含下列第三方
 - 版權：Copyright 2008-2025 Pymodbus
 - 來源：https://github.com/pymodbus-dev/pymodbus
 
+## pyserial（BSD 3-Clause）
+
+- 元件：pyserial 3.5，pymodbus 的序列埠傳輸相依（modbus_tags 支援 RTU 通道）。
+- 授權全文：`licenses/pyserial-LICENSE.txt`
+- 版權：Copyright 2001-2020 Chris Liechti
+- 來源：https://github.com/pyserial/pyserial
+
+## modbus_tags（自有函式庫）
+
+- 元件：`lib.modbus_tags`，同一團隊維護的 Modbus 標籤函式庫，原始碼以副本形式隨程式打包，無額外第三方授權。
+
 ## Python（PSF License）
 
 - 元件：CPython 直譯器與標準函式庫（`python314.dll` 及隨附模組）。
