@@ -4,7 +4,7 @@ created: 2026-11-07
 tags: [modbus, modbus-tags, migration, jog]
 slug: modbus-tags-migration
 goal: "plc-motion 的 Modbus 通訊改由 modbus_tags 負責，交握與安全行為不變，JOG 放開不等輪詢週期，IO Monitor 支援函式庫全部型別"
-status: approved
+status: done
 approved_by: user
 related: ["[[spec-modbus-tags-migration]]", "[[design-modbus-tags-migration]]"]
 ---
